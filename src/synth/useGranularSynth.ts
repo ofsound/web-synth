@@ -67,7 +67,7 @@ export const DEFAULT_GRANULAR_PARAMS: GranularSynthParams = {
     release: 0.5,
   },
   gain: 0.8,
-  enabled: true,
+  enabled: false,
 };
 
 const WINDOW_CACHE = new Map<number, Float32Array>();
