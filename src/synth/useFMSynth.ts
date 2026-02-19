@@ -49,7 +49,7 @@ export const DEFAULT_FM_PARAMS: FMSynthParams = {
   enabled: true,
 };
 
-export function useFMSynth(ctx: AudioContext | null, midiBus: MidiBus) {
+export function useFMSynth(ctx: AudioContext | null, midiBus: MidiBus, listenChannel?: number | null) {
   const callbacks = useMemo(
     () =>
       (
@@ -148,6 +148,8 @@ export function useFMSynth(ctx: AudioContext | null, midiBus: MidiBus) {
     midiBus,
     defaultParams: DEFAULT_FM_PARAMS,
     maxVoices: 16,
+    listenChannel,
+    getReleaseDuration: (getParams) => getParams().ampEnv.release + 0.3,
     callbacks,
   });
 }

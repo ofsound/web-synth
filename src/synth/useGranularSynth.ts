@@ -99,7 +99,7 @@ async function createSourceBuffer(ctx: AudioContext): Promise<AudioBuffer> {
   return offline.startRendering();
 }
 
-export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
+export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, listenChannel?: number | null) {
   const voicesRef = useRef<Map<number, GranularVoice>>(new Map());
   const sourceBufferRef = useRef<AudioBuffer | null>(null);
   const bufferReadyRef = useRef(false);
@@ -140,6 +140,7 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
     midiBus,
     DEFAULT_GRANULAR_PARAMS,
     handleMidi,
+    listenChannel,
   );
 
   // ── Source buffer creation ──
@@ -299,6 +300,8 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
       // (bufferReadyRef is sync; the effect re-runs on ctx change)
     }
     if (!ctx) return;
+    const voicesAtMount = voicesRef.current;
+    const cleanupTimersAtMount = cleanupTimersRef.current;
 
     // Wait for buffer — poll briefly since buffer creation is async
     let cancelled = false;
@@ -351,15 +354,15 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
         schedulerTimerRef.current = null;
       }
       // Kill all voices and clear release timers
-      const notesToKill = [...voicesRef.current.keys()];
+      const notesToKill = [...voicesAtMount.keys()];
       for (const note of notesToKill) {
         killVoice(note);
       }
-      voicesRef.current.clear();
-      for (const tid of cleanupTimersRef.current) {
+      voicesAtMount.clear();
+      for (const tid of cleanupTimersAtMount) {
         clearTimeout(tid);
       }
-      cleanupTimersRef.current.clear();
+      cleanupTimersAtMount.clear();
     };
   }, [ctx, spawnGrain, killVoice, getParams]);
 

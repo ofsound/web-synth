@@ -31,8 +31,8 @@ class StubAnalyserNode extends StubAudioNode {
     fftSize = 1024;
     smoothingTimeConstant = 0.8;
     frequencyBinCount = 512;
-    getByteTimeDomainData(_arr: Uint8Array) { }
-    getByteFrequencyData(_arr: Uint8Array) { }
+    getByteTimeDomainData(arr: Uint8Array) { void arr; }
+    getByteFrequencyData(arr: Uint8Array) { void arr; }
 }
 
 class StubDynamicsCompressorNode extends StubAudioNode {

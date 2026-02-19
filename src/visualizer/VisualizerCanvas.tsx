@@ -44,11 +44,29 @@ function useVisualizerLoop(
     const canvas = canvasRef.current;
     if (!container || !canvas || !scene) return;
 
+    let disposed = false;
     loopStartedRef.current = false;
     let isVisible = document.visibilityState === "visible";
 
+    // Hoisted so both startLoopIfReady and handleVisibilityChange share the
+    // same function reference — necessary for the pause/resume pattern.
+    const loop = (now: number) => {
+      if (disposed) return;
+
+      const dt = Math.min((now - prevTimeRef.current) / 1000, 0.1);
+      prevTimeRef.current = now;
+
+      const state = midiStateRef.current;
+      const resolved = resolve(state, mappingsRef.current);
+      scene.update(resolved, state, dt, lastProcessedEventIdRef);
+
+      rafRef.current = requestAnimationFrame(loop);
+    };
+
     const startLoopIfReady = (deviceW: number, deviceH: number) => {
-      if (deviceW <= 0 || deviceH <= 0 || loopStartedRef.current) return;
+      if (disposed || deviceW <= 0 || deviceH <= 0 || loopStartedRef.current) {
+        return;
+      }
 
       canvas.width = deviceW;
       canvas.height = deviceH;
@@ -56,28 +74,11 @@ function useVisualizerLoop(
       loopStartedRef.current = true;
       prevTimeRef.current = performance.now();
 
-      const loop = (now: number) => {
-        if (!isVisible) {
-          // Pause rendering when tab is hidden to save battery
-          rafRef.current = requestAnimationFrame(loop);
-          prevTimeRef.current = now;
-          return;
-        }
-
-        const dt = Math.min((now - prevTimeRef.current) / 1000, 0.1);
-        prevTimeRef.current = now;
-
-        const state = midiStateRef.current;
-        const resolved = resolve(state, mappingsRef.current);
-        scene.update(resolved, state, dt, lastProcessedEventIdRef);
-
-        rafRef.current = requestAnimationFrame(loop);
-      };
-
       rafRef.current = requestAnimationFrame(loop);
     };
 
     const observer = new ResizeObserver((entries) => {
+      if (disposed) return;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         const dpr = Math.min(window.devicePixelRatio, 2);
@@ -97,8 +98,12 @@ function useVisualizerLoop(
     const handleVisibilityChange = () => {
       isVisible = document.visibilityState === "visible";
       if (isVisible && loopStartedRef.current) {
-        // Reset prevTime to avoid large dt jump when resuming
+        // Reset prevTime to avoid large dt jump when resuming, then restart.
         prevTimeRef.current = performance.now();
+        rafRef.current = requestAnimationFrame(loop);
+      } else {
+        // Truly pause the loop — no rAF callbacks while tab is hidden.
+        cancelAnimationFrame(rafRef.current);
       }
     };
 
@@ -106,6 +111,7 @@ function useVisualizerLoop(
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      disposed = true;
       observer.disconnect();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(rafRef.current);
@@ -121,15 +127,48 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
   const midiStateRef = useMidiState(midiBus);
 
   const [activeIdx, setActiveIdx] = useState(0);
+  const [isSwitchingScene, setIsSwitchingScene] = useState(false);
+  const queuedSceneIdxRef = useRef<number | null>(null);
 
   // One scene instance at a time — created fresh when the user switches scenes.
   // The outgoing instance is disposed by useVisualizerLoop’s cleanup effect.
   const [activeScene, setActiveScene] = useState<VisualizerScene | null>(() =>
     createScene(0),
   );
+
+  const requestSceneSwitch = useCallback(
+    (nextIdx: number) => {
+      if (nextIdx === activeIdx) return;
+      if (isSwitchingScene) {
+        queuedSceneIdxRef.current = nextIdx;
+        return;
+      }
+      setIsSwitchingScene(true);
+      setActiveIdx(nextIdx);
+    },
+    [activeIdx, isSwitchingScene],
+  );
+
   useEffect(() => {
     setActiveScene(createScene(activeIdx));
   }, [activeIdx]);
+
+  useEffect(() => {
+    if (!isSwitchingScene) return;
+    const tid = window.setTimeout(() => {
+      setIsSwitchingScene(false);
+    }, 120);
+    return () => window.clearTimeout(tid);
+  }, [activeIdx, isSwitchingScene]);
+
+  useEffect(() => {
+    if (isSwitchingScene) return;
+    const queuedIdx = queuedSceneIdxRef.current;
+    if (queuedIdx === null || queuedIdx === activeIdx) return;
+    queuedSceneIdxRef.current = null;
+    setIsSwitchingScene(true);
+    setActiveIdx(queuedIdx);
+  }, [activeIdx, isSwitchingScene]);
 
   // Canvas ref tracks the active scene’s renderer type.
   const activeCanvasRef =
@@ -178,7 +217,8 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
         <ThumbnailStrip
           scenes={SCENE_METAS}
           activeIdx={activeIdx}
-          onSelect={setActiveIdx}
+          onSelect={requestSceneSwitch}
+          disabled={isSwitchingScene}
         />
         <button
           type="button"

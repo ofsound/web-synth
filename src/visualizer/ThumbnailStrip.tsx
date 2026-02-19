@@ -8,9 +8,15 @@ interface Props {
   scenes: SceneMeta[];
   activeIdx: number;
   onSelect: (idx: number) => void;
+  disabled?: boolean;
 }
 
-export function ThumbnailStrip({ scenes, activeIdx, onSelect }: Props) {
+export function ThumbnailStrip({
+  scenes,
+  activeIdx,
+  onSelect,
+  disabled = false,
+}: Props) {
   return (
     <div className="flex items-center gap-1.5">
       {scenes.map((scene, i) => (
@@ -18,13 +24,15 @@ export function ThumbnailStrip({ scenes, activeIdx, onSelect }: Props) {
           type="button"
           key={scene.id}
           onClick={() => onSelect(i)}
+          disabled={disabled}
           aria-label={`Switch to ${scene.name} scene`}
           aria-pressed={i === activeIdx}
           className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
             i === activeIdx
               ? "border-accent bg-accent/10 text-accent"
               : "border-border text-text-muted hover:border-text-muted/50 hover:text-text"
-          }`}
+          } ${disabled ? "cursor-not-allowed opacity-70" : ""}
+          `}
           title={scene.name}
         >
           <span className="text-sm">{scene.thumbnail}</span>

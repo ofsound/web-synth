@@ -97,7 +97,7 @@ export function useMasterOutput(
     masterGain.connect(limiter);
     limiter.connect(outputNode);
 
-    // Wire: masterGain → splitter → analysers (post-limiter for accurate metering)
+    // Wire: limiter → splitter → analysers (post-limiter for accurate metering)
     // Tap the signal AFTER the limiter so meters display true output levels,
     // not pre-limit peaks that the user never actually hears.
     limiter.connect(splitter);

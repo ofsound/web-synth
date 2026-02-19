@@ -52,6 +52,19 @@ export interface UseSynthBaseOptions<P extends BaseSynthParams, V> {
   midiBus: MidiBus;
   defaultParams: P;
   maxVoices?: number;
+  /**
+   * Optional MIDI channel filter (0-15).  When provided, only MIDI events
+   * on this channel reach the VoiceManager.  Omit or pass null/undefined
+   * to listen on all channels (legacy behaviour).
+   */
+  listenChannel?: number | null;
+  /**
+   * Return the envelope release duration (seconds) for cleanup scheduling.
+   * Called once during VoiceManager construction; the VoiceManager uses this
+   * to know how long to keep a releasing voice alive.
+   * Defaults to 0.5 s if omitted.
+   */
+  getReleaseDuration?: (getParams: () => P) => number;
   callbacks: (
     ctx: AudioContext,
     output: GainNode,
@@ -68,7 +81,7 @@ export interface SynthBaseResult<P> {
 export function useSynthBase<P extends BaseSynthParams, V>(
   options: UseSynthBaseOptions<P, V>,
 ): SynthBaseResult<P> {
-  const { ctx, midiBus, defaultParams, maxVoices = 16, callbacks } = options;
+  const { ctx, midiBus, defaultParams, maxVoices = 16, listenChannel, getReleaseDuration, callbacks } = options;
 
   const vmRef = useRef<VoiceManager<V> | null>(null);
   const callbacksRef = useRef(callbacks);
@@ -97,6 +110,7 @@ export function useSynthBase<P extends BaseSynthParams, V>(
     midiBus,
     defaultParams,
     handleMidi,
+    listenChannel,
   );
 
   // VoiceManager lifecycle
@@ -107,6 +121,7 @@ export function useSynthBase<P extends BaseSynthParams, V>(
 
     const vm = new VoiceManager<V>({
       maxVoices,
+      releaseDuration: getReleaseDuration ? getReleaseDuration(getParams) : undefined,
       createVoice: voiceCallbacks.createVoice,
       releaseVoice: voiceCallbacks.releaseVoice,
       killVoice: voiceCallbacks.killVoice,
@@ -117,7 +132,7 @@ export function useSynthBase<P extends BaseSynthParams, V>(
     return () => {
       vm.allNotesOff();
     };
-  }, [ctx, getParams, maxVoices, outputRef]);
+  }, [ctx, getParams, getReleaseDuration, maxVoices, outputRef]);
 
   return { outputNode, params, setParams };
 }

@@ -52,6 +52,7 @@ export const DEFAULT_SUB_PARAMS: SubtractiveSynthParams = {
 export function useSubtractiveSynth(
   ctx: AudioContext | null,
   midiBus: MidiBus,
+  listenChannel?: number | null,
 ) {
   const callbacks = useMemo(
     () =>
@@ -144,6 +145,8 @@ export function useSubtractiveSynth(
     midiBus,
     defaultParams: DEFAULT_SUB_PARAMS,
     maxVoices: 16,
+    listenChannel,
+    getReleaseDuration: (getParams) => getParams().ampEnv.release + 0.3,
     callbacks,
   });
 }

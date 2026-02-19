@@ -8,17 +8,10 @@
  * Decomposed into section sub-components to isolate re-renders.
  */
 
-import {
-  Suspense,
-  lazy,
-  memo,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Suspense, lazy, memo, useCallback, useRef, useState } from "react";
 import { useAudioContext } from "./hooks/useAudioContext";
 import { useMidiBus } from "./midi/useMidiBus";
+import { useSynthOrchestrator } from "./hooks/useSynthOrchestrator";
 
 // MIDI inputs
 import { useWebMidiInput } from "./midi/WebMidiInput";
@@ -26,19 +19,7 @@ import { KeyboardInput } from "./midi/KeyboardInput";
 import { PolySequencer } from "./midi/PolySequencer";
 import { MidiFilePlayer } from "./midi/MidiFilePlayer";
 
-// Synth engines
-import { useFMSynth } from "./synth/useFMSynth";
-import { useSubtractiveSynth } from "./synth/useSubtractiveSynth";
-import { useGranularSynth } from "./synth/useGranularSynth";
-
-// Effects
-import { useDelay } from "./effects/useDelay";
-import { usePhaser } from "./effects/usePhaser";
-import { useBitcrusher } from "./effects/useBitcrusher";
-import { useEffectRack } from "./effects/useEffectRack";
-
-// Master output
-import { useMasterOutput } from "./master/useMasterOutput";
+// Synth engine types (hooks are consumed via useSynthOrchestrator)
 
 // Visualiser (lazy-loaded for bundle splitting)
 const VisualizerCanvas = lazy(() =>
@@ -64,8 +45,47 @@ import type { SubtractiveSynthParams } from "./synth/useSubtractiveSynth";
 import type { GranularSynthParams } from "./synth/useGranularSynth";
 import type { EffectSlot, RoutingMode } from "./effects/useEffectRack";
 import type { MidiChannelMode } from "./midi/channelPolicy";
+import {
+  listPresets,
+  savePreset,
+  loadPreset,
+  deletePreset,
+  type Preset,
+} from "./utils/presetStore";
 
 /* ── Memoized Section Components ── */
+
+/** Tiny MIDI channel selector shared by all engine panels. */
+function ChannelSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (ch: number | null) => void;
+}) {
+  return (
+    <div className="mb-1 flex items-center gap-2 text-[10px]">
+      <span className="text-text-muted">{label} Ch:</span>
+      <select
+        className="bg-surface border-border text-text rounded border px-1 py-0.5 text-[10px]"
+        value={value === null ? "all" : String(value)}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(v === "all" ? null : Number(v));
+        }}
+      >
+        <option value="all">All</option>
+        {Array.from({ length: 16 }, (_, i) => (
+          <option key={i} value={String(i)}>
+            {i + 1}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 const MidiInputSection = memo(function MidiInputSection({
   midiBus,
@@ -157,6 +177,12 @@ const SynthEngineSection = memo(function SynthEngineSection({
   setSubParams,
   granParams,
   setGranParams,
+  fmChannel,
+  setFmChannel,
+  subChannel,
+  setSubChannel,
+  granChannel,
+  setGranChannel,
 }: {
   fmParams: FMSynthParams;
   setFmParams: React.Dispatch<React.SetStateAction<FMSynthParams>>;
@@ -164,6 +190,12 @@ const SynthEngineSection = memo(function SynthEngineSection({
   setSubParams: React.Dispatch<React.SetStateAction<SubtractiveSynthParams>>;
   granParams: GranularSynthParams;
   setGranParams: React.Dispatch<React.SetStateAction<GranularSynthParams>>;
+  fmChannel: number | null;
+  setFmChannel: (ch: number | null) => void;
+  subChannel: number | null;
+  setSubChannel: (ch: number | null) => void;
+  granChannel: number | null;
+  setGranChannel: (ch: number | null) => void;
 }) {
   return (
     <section>
@@ -171,9 +203,26 @@ const SynthEngineSection = memo(function SynthEngineSection({
         Synth Engines
       </h2>
       <div className="grid gap-4 xl:grid-cols-3">
-        <FMSynthPanel params={fmParams} setParams={setFmParams} />
-        <SubtractiveSynthPanel params={subParams} setParams={setSubParams} />
-        <GranularSynthPanel params={granParams} setParams={setGranParams} />
+        <div>
+          <ChannelSelect label="FM" value={fmChannel} onChange={setFmChannel} />
+          <FMSynthPanel params={fmParams} setParams={setFmParams} />
+        </div>
+        <div>
+          <ChannelSelect
+            label="Sub"
+            value={subChannel}
+            onChange={setSubChannel}
+          />
+          <SubtractiveSynthPanel params={subParams} setParams={setSubParams} />
+        </div>
+        <div>
+          <ChannelSelect
+            label="Gran"
+            value={granChannel}
+            onChange={setGranChannel}
+          />
+          <GranularSynthPanel params={granParams} setParams={setGranParams} />
+        </div>
       </div>
     </section>
   );
@@ -277,6 +326,12 @@ export default function App() {
   const sequencerChannelMode: MidiChannelMode = "normalized";
   const midiFileChannelMode: MidiChannelMode = "source";
 
+  // ── Per-engine MIDI channel routing ──
+  // null = listen on all channels (omni), 0-15 = specific channel
+  const [fmChannel, setFmChannel] = useState<number | null>(null);
+  const [subChannel, setSubChannel] = useState<number | null>(null);
+  const [granChannel, setGranChannel] = useState<number | null>(null);
+
   const registerMidiFileStop = useCallback((stop: (() => void) | null) => {
     midiFileTransportRef.current = stop;
   }, []);
@@ -285,61 +340,27 @@ export default function App() {
     sequencerTransportRef.current = stop;
   }, []);
 
-  // ── Master output chain ──
-  const { nodes: master, masterVolume, setMasterVolume } = useMasterOutput(ctx);
+  // ── Orchestrator: engines + effects + master ──
+  const {
+    master,
+    masterVolume,
+    setMasterVolume,
+    fmSynth,
+    subSynth,
+    granSynth,
+    delay,
+    phaser,
+    bitcrusher,
+    effectRack,
+  } = useSynthOrchestrator(ctx, midiBus, {
+    fmChannel,
+    subChannel,
+    granChannel,
+  });
 
   // ── MIDI inputs ──
   const { supported: midiSupported, inputs: midiInputs } =
     useWebMidiInput(midiBus);
-
-  // ── Synth engines ──
-  const fmSynth = useFMSynth(ctx, midiBus);
-  const subSynth = useSubtractiveSynth(ctx, midiBus);
-  const granSynth = useGranularSynth(ctx, midiBus);
-
-  // Connect synth outputs → synthMix
-  useEffect(() => {
-    if (!master) return;
-    const connections: { node: GainNode | null; target: GainNode }[] = [
-      { node: fmSynth.outputNode, target: master.synthMix },
-      { node: subSynth.outputNode, target: master.synthMix },
-      { node: granSynth.outputNode, target: master.synthMix },
-    ];
-    for (const c of connections) {
-      if (c.node) c.node.connect(c.target);
-    }
-    return () => {
-      for (const c of connections) {
-        if (c.node) {
-          try {
-            c.node.disconnect(c.target);
-          } catch {
-            /* ok */
-          }
-        }
-      }
-    };
-  }, [master, fmSynth.outputNode, subSynth.outputNode, granSynth.outputNode]);
-
-  // ── Effects ──
-  const delay = useDelay(ctx);
-  const phaser = usePhaser(ctx);
-  const bitcrusher = useBitcrusher(ctx);
-
-  const effectRack = useEffectRack(
-    master?.effectsSend ?? null,
-    master?.effectsReturn ?? null,
-  );
-  const { registerEffects } = effectRack;
-
-  // Register effects with the rack (batch registration to reduce rewire churn)
-  useEffect(() => {
-    registerEffects([
-      { id: "delay", label: "Delay / Echo", io: delay.io },
-      { id: "phaser", label: "Phaser", io: phaser.io },
-      { id: "bitcrusher", label: "Bitcrusher", io: bitcrusher.io },
-    ]);
-  }, [delay.io, phaser.io, bitcrusher.io, registerEffects]);
 
   // Render-map for effect cards — add new effects here without touching
   // EffectsRackSection. Each entry closes over its own params & setParams.
@@ -394,6 +415,90 @@ export default function App() {
     ],
   );
 
+  // ── Preset management ──
+  const [presets, setPresets] = useState<Preset[]>(() => listPresets());
+  const [presetName, setPresetName] = useState("");
+
+  const handleSavePreset = useCallback(() => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset: Preset = {
+      name,
+      createdAt: Date.now(),
+      fm: fmSynth.params,
+      sub: subSynth.params,
+      gran: granSynth.params,
+      effects: {
+        delayParams: delay.params,
+        phaserParams: phaser.params,
+        bitcrusherParams: bitcrusher.params,
+        rackSlots: effectRack.slots.map((s) => ({
+          id: s.id,
+          enabled: s.enabled,
+        })),
+        routingMode: effectRack.routingMode,
+      },
+      channels: { fmChannel, subChannel, granChannel },
+      masterVolume,
+    };
+    savePreset(preset);
+    setPresets(listPresets());
+    setPresetName("");
+  }, [
+    presetName,
+    fmSynth.params,
+    subSynth.params,
+    granSynth.params,
+    delay.params,
+    phaser.params,
+    bitcrusher.params,
+    effectRack.slots,
+    effectRack.routingMode,
+    fmChannel,
+    subChannel,
+    granChannel,
+    masterVolume,
+  ]);
+
+  const handleLoadPreset = useCallback(
+    (name: string) => {
+      const preset = loadPreset(name);
+      if (!preset) return;
+      fmSynth.setParams(preset.fm);
+      subSynth.setParams(preset.sub);
+      granSynth.setParams(preset.gran);
+      delay.setParams(preset.effects.delayParams);
+      phaser.setParams(preset.effects.phaserParams);
+      bitcrusher.setParams(preset.effects.bitcrusherParams);
+      for (const s of preset.effects.rackSlots) {
+        effectRack.setEffectEnabled(s.id, s.enabled);
+      }
+      effectRack.setRoutingMode(preset.effects.routingMode);
+      setFmChannel(preset.channels.fmChannel);
+      setSubChannel(preset.channels.subChannel);
+      setGranChannel(preset.channels.granChannel);
+      setMasterVolume(preset.masterVolume);
+    },
+    [
+      fmSynth,
+      subSynth,
+      granSynth,
+      delay,
+      phaser,
+      bitcrusher,
+      effectRack,
+      setMasterVolume,
+      setFmChannel,
+      setSubChannel,
+      setGranChannel,
+    ],
+  );
+
+  const handleDeletePreset = useCallback((name: string) => {
+    deletePreset(name);
+    setPresets(listPresets());
+  }, []);
+
   return (
     <div className="bg-surface text-text flex h-screen flex-col overflow-hidden">
       {/* Header */}
@@ -403,6 +508,65 @@ export default function App() {
             ⚡ Synth Workstation
           </h1>
           <div className="flex items-center gap-2">
+            {/* Preset bar */}
+            <div className="flex items-center gap-1">
+              <input
+                id="preset-name"
+                name="preset-name"
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="Preset name"
+                className="bg-surface border-border text-text w-28 rounded border px-2 py-1 text-xs placeholder:text-gray-500"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSavePreset();
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleSavePreset}
+                disabled={!presetName.trim()}
+                className="border-accent text-accent hover:bg-accent/10 disabled:border-border disabled:text-text-muted rounded border px-2 py-1 text-xs"
+              >
+                Save
+              </button>
+              {presets.length > 0 && (
+                <select
+                  id="preset-load"
+                  name="preset-load"
+                  className="bg-surface border-border text-text rounded border px-1 py-1 text-xs"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) handleLoadPreset(e.target.value);
+                  }}
+                >
+                  <option value="">Load…</option>
+                  {presets.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {presets.length > 0 && (
+                <select
+                  id="preset-delete"
+                  name="preset-delete"
+                  className="bg-surface border-border text-danger rounded border px-1 py-1 text-xs"
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) handleDeletePreset(e.target.value);
+                  }}
+                >
+                  <option value="">Del…</option>
+                  {presets.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
             {/* Mobile viz toggle */}
             <button
               type="button"
@@ -459,6 +623,12 @@ export default function App() {
                 setSubParams={subSynth.setParams}
                 granParams={granSynth.params}
                 setGranParams={granSynth.setParams}
+                fmChannel={fmChannel}
+                setFmChannel={setFmChannel}
+                subChannel={subChannel}
+                setSubChannel={setSubChannel}
+                granChannel={granChannel}
+                setGranChannel={setGranChannel}
               />
             </ErrorBoundary>
 

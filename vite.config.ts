@@ -13,7 +13,9 @@ export default defineConfig({
       // Basic CSP — tightens XSS surface while allowing Three.js/GSAP inline styles.
       "Content-Security-Policy": [
         "default-src 'self'",
-        "script-src 'self' 'unsafe-eval'", // 'unsafe-eval' required by Three.js in dev
+        // Vite React dev preamble uses an inline bootstrap script.
+        // Allowing 'unsafe-inline' here keeps dev server functional.
+        "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // 'unsafe-eval' required by Three.js in dev
         "style-src 'self' 'unsafe-inline'",
         "worker-src blob:",
         "connect-src 'self'",
