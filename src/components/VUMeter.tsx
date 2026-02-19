@@ -36,7 +36,8 @@ export function VUMeter({
   const rafRef = useRef(0);
   const peakLRef = useRef(-100);
   const peakRRef = useRef(-100);
-  const peakDecay = 0.15; // dB per frame
+  const lastTimeRef = useRef(0);
+  const PEAK_DECAY_RATE = 10; // dB per second (frame-rate independent)
 
   useEffect(() => {
     if (!analyserL || !analyserR) return;
@@ -44,11 +45,17 @@ export function VUMeter({
     const bufL = new Float32Array(analyserL.fftSize);
     const bufR = new Float32Array(analyserR.fftSize);
 
-    const draw = () => {
+    lastTimeRef.current = performance.now();
+
+    const draw = (timestamp: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const c = canvas.getContext("2d");
       if (!c) return;
+
+      // Frame-rate independent delta time
+      const dt = Math.min((timestamp - lastTimeRef.current) / 1000, 0.1);
+      lastTimeRef.current = timestamp;
 
       analyserL.getFloatTimeDomainData(bufL);
       analyserR.getFloatTimeDomainData(bufR);
@@ -56,9 +63,9 @@ export function VUMeter({
       const dbL = rmsToDb(rmsLevel(bufL));
       const dbR = rmsToDb(rmsLevel(bufR));
 
-      // Peak hold with decay
-      peakLRef.current = Math.max(dbL, peakLRef.current - peakDecay);
-      peakRRef.current = Math.max(dbR, peakRRef.current - peakDecay);
+      // Peak hold with frame-rate-independent decay
+      peakLRef.current = Math.max(dbL, peakLRef.current - PEAK_DECAY_RATE * dt);
+      peakRRef.current = Math.max(dbR, peakRRef.current - PEAK_DECAY_RATE * dt);
 
       const w = canvas.width;
       const h = canvas.height;
@@ -131,7 +138,7 @@ export function VUMeter({
       rafRef.current = requestAnimationFrame(draw);
     };
 
-    draw();
+    rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
   }, [analyserL, analyserR]);
 

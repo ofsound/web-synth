@@ -6,14 +6,10 @@
  * engine subscribes to the bus and reacts to noteOn / noteOff / cc.
  */
 
-export interface MidiEvent {
-    type: "noteon" | "noteoff" | "cc";
-    channel: number;
-    note: number;
-    velocity: number;
-    cc?: number;
-    value?: number;
-}
+export type MidiEvent =
+    | { type: "noteon"; channel: number; note: number; velocity: number }
+    | { type: "noteoff"; channel: number; note: number; velocity: number }
+    | { type: "cc"; channel: number; note: number; velocity: number; cc: number; value: number };
 
 export type MidiSubscriber = (e: MidiEvent) => void;
 

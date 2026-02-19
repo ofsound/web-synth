@@ -228,7 +228,10 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
       flushSequencerNotes();
       queueMicrotask(() => setCurrentStep(-1));
     }
-  }, [ctx, playing, bpm, clearPendingTimeouts, flushSequencerNotes]);
+    // NOTE: `bpm` is intentionally excluded — tempo changes are handled via
+    // scheduler.setTempo() in a separate effect to avoid restarting playback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx, playing, clearPendingTimeouts, flushSequencerNotes]);
 
   /** Clear all steps */
   const clearAll = useCallback(() => {

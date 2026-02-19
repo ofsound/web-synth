@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { EffectIO } from "./useDelay";
+import type { EffectIO } from "../types/audio";
 
 const NUM_STAGES = 4;
 const BASE_FREQ = 1000;

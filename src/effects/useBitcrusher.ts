@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { EffectIO } from "./useDelay";
+import type { EffectIO } from "../types/audio";
 
 function makeStaircaseCurve(bits: number, samples = 8192): Float32Array<ArrayBuffer> {
     const curve = new Float32Array(

@@ -9,7 +9,14 @@
  * - Resize observer for responsive sizing
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import type { MidiBus } from "../midi/MidiBus";
 import { useMidiState } from "./useMidiState";
 import type { MidiState } from "./useMidiState";
@@ -20,70 +27,80 @@ import type { VisualizerScene } from "./scenes/types";
 import { ThumbnailStrip } from "./ThumbnailStrip.tsx";
 import { MappingModal } from "./MappingModal.tsx";
 
-/* ------------------------------------------------------------------ */
-/*  Hook: scene lifecycle                                             */
-/* ------------------------------------------------------------------ */
-
 function useVisualizerLoop(
-  canvasRef: React.RefObject<HTMLCanvasElement | null>,
+  containerRef: RefObject<HTMLDivElement | null>,
+  canvasRef: RefObject<HTMLCanvasElement | null>,
   scene: VisualizerScene | null,
-  midiStateRef: React.RefObject<MidiState>,
+  midiStateRef: RefObject<MidiState>,
   mappings: MidiMapping[],
 ) {
   const rafRef = useRef(0);
   const prevTimeRef = useRef(0);
+  const lastProcessedEventIdRef = useRef(-1);
+  const loopStartedRef = useRef(false);
 
   useEffect(() => {
+    const container = containerRef.current;
     const canvas = canvasRef.current;
-    if (!canvas || !scene) return;
+    if (!container || !canvas || !scene) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio, 2);
-    const w = Math.round(rect.width * dpr);
-    const h = Math.round(rect.height * dpr);
-    canvas.width = w;
-    canvas.height = h;
+    loopStartedRef.current = false;
 
-    scene.init(canvas, w, h);
-    prevTimeRef.current = performance.now();
+    const startLoopIfReady = (deviceW: number, deviceH: number) => {
+      if (deviceW <= 0 || deviceH <= 0 || loopStartedRef.current) return;
 
-    const loop = (now: number) => {
-      const dt = Math.min((now - prevTimeRef.current) / 1000, 0.1); // cap dt at 100 ms
-      prevTimeRef.current = now;
+      canvas.width = deviceW;
+      canvas.height = deviceH;
+      scene.init(canvas, deviceW, deviceH);
+      loopStartedRef.current = true;
+      prevTimeRef.current = performance.now();
 
-      const state = midiStateRef.current;
-      const resolved = resolve(state, mappings);
-      scene.update(resolved, state, dt);
+      const loop = (now: number) => {
+        const dt = Math.min((now - prevTimeRef.current) / 1000, 0.1);
+        prevTimeRef.current = now;
 
-      // Clear lastEvent trigger so it only fires once
-      if (state.lastEvent) {
-        state.lastEvent = null;
-      }
+        const state = midiStateRef.current;
+        const resolved = resolve(state, mappings);
+        scene.update(resolved, state, dt, lastProcessedEventIdRef);
+
+        rafRef.current = requestAnimationFrame(loop);
+      };
 
       rafRef.current = requestAnimationFrame(loop);
     };
 
-    rafRef.current = requestAnimationFrame(loop);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        const dpr = Math.min(window.devicePixelRatio, 2);
+        const w = Math.round(width * dpr);
+        const h = Math.round(height * dpr);
+        canvas.width = w;
+        canvas.height = h;
+
+        if (loopStartedRef.current) {
+          scene.resize(w, h);
+        } else if (w > 0 && h > 0) {
+          startLoopIfReady(w, h);
+        }
+      }
+    });
+
+    observer.observe(container);
 
     return () => {
+      observer.disconnect();
       cancelAnimationFrame(rafRef.current);
       scene.dispose();
     };
-    // Re-init when scene or mappings identity change
-  }, [canvasRef, scene, midiStateRef, mappings]);
+  }, [containerRef, canvasRef, scene, midiStateRef, mappings]);
 }
-
-/* ------------------------------------------------------------------ */
-/*  Component                                                         */
-/* ------------------------------------------------------------------ */
 
 export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const midiStateRef = useMidiState(midiBus);
 
-  // Scenes — stable array created once (useMemo, not useRef, so it's
-  // accessible during render without violating react-hooks/refs).
   const scenes = useMemo(() => createScenes(), []);
 
   const defaultMappings = useMemo<Record<string, MidiMapping[]>>(() => {
@@ -97,7 +114,6 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const activeScene = scenes[activeIdx] ?? null;
 
-  // Mappings (per scene, start with defaults)
   const [mappingsMap, setMappingsMap] =
     useState<Record<string, MidiMapping[]>>(defaultMappings);
 
@@ -111,37 +127,12 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
     [],
   );
 
-  // Settings modal
   const [showModal, setShowModal] = useState(false);
 
-  // Drive the animation loop
-  useVisualizerLoop(canvasRef, activeScene, midiStateRef, activeMappings);
-
-  // Resize observer
-  useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas || !activeScene) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        const dpr = Math.min(window.devicePixelRatio, 2);
-        const w = Math.round(width * dpr);
-        const h = Math.round(height * dpr);
-        canvas.width = w;
-        canvas.height = h;
-        activeScene.resize(w, h);
-      }
-    });
-
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [activeScene]);
+  useVisualizerLoop(containerRef, canvasRef, activeScene, midiStateRef, activeMappings);
 
   return (
     <div className="flex h-full flex-col">
-      {/* Toolbar: thumbnail strip + settings gear */}
       <div className="border-border flex items-center gap-2 border-b px-2 py-1.5">
         <ThumbnailStrip
           scenes={scenes}
@@ -161,7 +152,6 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
         </button>
       </div>
 
-      {/* Canvas container */}
       <div ref={containerRef} className="relative min-h-0 flex-1">
         <canvas
           ref={canvasRef}
@@ -170,7 +160,6 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
         />
       </div>
 
-      {/* Mapping modal */}
       {showModal && activeScene && (
         <MappingModal
           scene={activeScene}

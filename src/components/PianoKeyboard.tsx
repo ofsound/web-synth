@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { isBlackKey, midiToNoteName } from "../utils/midiUtils";
 
 interface PianoKeyboardProps {
@@ -16,13 +16,19 @@ export function PianoKeyboard({
   onNoteOff,
   activeNotes = new Set(),
 }: PianoKeyboardProps) {
-  const notes: number[] = [];
-  for (let n = startNote; n <= endNote; n++) notes.push(n);
+  const notes = useMemo(() => {
+    const arr: number[] = [];
+    for (let n = startNote; n <= endNote; n++) arr.push(n);
+    return arr;
+  }, [startNote, endNote]);
 
-  const whiteNotes = notes.filter((n) => !isBlackKey(n));
-  const blackNotes = notes.filter((n) => isBlackKey(n));
+  const whiteNotes = useMemo(
+    () => notes.filter((n) => !isBlackKey(n)),
+    [notes],
+  );
+  const blackNotes = useMemo(() => notes.filter((n) => isBlackKey(n)), [notes]);
 
-  const whiteKeyWidth = 100 / whiteNotes.length;
+  const whiteKeyWidth = useMemo(() => 100 / whiteNotes.length, [whiteNotes]);
 
   /* Compute x-position for a black key based on its left white-key index */
   const getBlackKeyX = useCallback(

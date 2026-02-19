@@ -9,24 +9,28 @@ import { AudioCtxContext } from "./AudioContext";
 
 export function AudioContextProvider({ children }: { children: ReactNode }) {
   const ctxRef = useRef<AudioContext | null>(null);
+  const initializedRef = useRef(false);
   const [ctx, setCtx] = useState<AudioContext | null>(null);
 
   const init = useCallback(() => {
-    if (ctxRef.current) return;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
     const ac = new AudioContext();
     ctxRef.current = ac;
     setCtx(ac);
   }, []);
 
-  /* Initialise on first user gesture */
   useEffect(() => {
+    if (initializedRef.current) return;
+
     const handler = () => {
       init();
-      window.removeEventListener("click", handler);
-      window.removeEventListener("keydown", handler);
     };
-    window.addEventListener("click", handler);
-    window.addEventListener("keydown", handler);
+
+    window.addEventListener("click", handler, { once: true });
+    window.addEventListener("keydown", handler, { once: true });
+
     return () => {
       window.removeEventListener("click", handler);
       window.removeEventListener("keydown", handler);

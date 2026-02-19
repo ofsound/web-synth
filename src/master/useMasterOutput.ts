@@ -78,8 +78,8 @@ export function useMasterOutput(
 
         // Wire: synthMix → effectsSend → [effects rack patches here] → effectsReturn → masterGain
         synthMix.connect(effectsSend);
-        // Default: direct bypass (effectsSend → effectsReturn)
-        effectsSend.connect(effectsReturn);
+        // NOTE: No default bypass here — useEffectRack owns the send→return routing
+        // to avoid temporary double-bypass (+6dB) on mount.
         effectsReturn.connect(masterGain);
 
         // Wire: masterGain → splitter → analysers

@@ -41,8 +41,13 @@ export class VoiceManager<V> {
     }
 
     noteOn(note: number, velocity: number, time: number) {
-        // If already playing, ignore (no re-trigger)
-        if (this.voices.has(note)) return;
+        // Re-trigger: kill existing voice for this note before creating new one
+        if (this.voices.has(note)) {
+            const existing = this.voices.get(note)!;
+            this.opts.killVoice(existing, note);
+            this.voices.delete(note);
+            this.noteOrder = this.noteOrder.filter((n) => n !== note);
+        }
 
         // Voice stealing: if at max capacity, kill the oldest voice
         if (this.maxVoices > 0 && this.voices.size >= this.maxVoices && this.noteOrder.length > 0) {
