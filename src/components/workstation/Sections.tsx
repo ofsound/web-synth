@@ -238,9 +238,7 @@ export const EffectsRackSection = memo(function EffectsRackSection({
         </div>
       </div>
 
-      <div className="grid gap-3">
-        {slots.map((slot) => renderCard(slot))}
-      </div>
+      <div className="grid gap-3">{slots.map((slot) => renderCard(slot))}</div>
     </section>
   );
 });

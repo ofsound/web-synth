@@ -19,7 +19,10 @@ interface FMPanelProps {
   setParams: React.Dispatch<React.SetStateAction<FMSynthParams>>;
 }
 
-export const FMSynthPanel = memo(function FMSynthPanel({ params, setParams }: FMPanelProps) {
+export const FMSynthPanel = memo(function FMSynthPanel({
+  params,
+  setParams,
+}: FMPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
 
@@ -222,7 +225,10 @@ interface SubPanelProps {
   setParams: React.Dispatch<React.SetStateAction<SubtractiveSynthParams>>;
 }
 
-export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
+export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({
+  params,
+  setParams,
+}: SubPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
 
@@ -437,7 +443,10 @@ interface GranPanelProps {
   setParams: React.Dispatch<React.SetStateAction<GranularSynthParams>>;
 }
 
-export const GranularSynthPanel = memo(function GranularSynthPanel({ params, setParams }: GranPanelProps) {
+export const GranularSynthPanel = memo(function GranularSynthPanel({
+  params,
+  setParams,
+}: GranPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
 
