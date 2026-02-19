@@ -117,10 +117,10 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
   }, []);
 
   const startVoiceRef = useRef<(note: number, velocity: number, audioCtx: AudioContext) => void>(
-    () => {},
+    () => { },
   );
   const stopVoiceRef = useRef<(note: number, audioCtx: AudioContext) => void>(
-    () => {},
+    () => { },
   );
 
   // MIDI handler — forwarded to voice start/stop via refs

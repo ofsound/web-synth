@@ -86,7 +86,10 @@ export function Knob({
       const dy = startYRef.current - e.clientY;
       // Sensitivity in normalised space: 150 px = full range
       const normDelta = dy / 150;
-      const newNorm = Math.min(1, Math.max(0, startNormRef.current + normDelta));
+      const newNorm = Math.min(
+        1,
+        Math.max(0, startNormRef.current + normDelta),
+      );
       const newVal = clampValue(normToValue(newNorm, min, max, scale));
       onChange(newVal);
     },
@@ -105,16 +108,32 @@ export function Knob({
 
       if (e.key === "ArrowUp" || e.key === "ArrowRight") {
         e.preventDefault();
-        onChange(clampValue(normToValue(Math.min(1, currentNorm + fineNorm), min, max, scale)));
+        onChange(
+          clampValue(
+            normToValue(Math.min(1, currentNorm + fineNorm), min, max, scale),
+          ),
+        );
       } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
         e.preventDefault();
-        onChange(clampValue(normToValue(Math.max(0, currentNorm - fineNorm), min, max, scale)));
+        onChange(
+          clampValue(
+            normToValue(Math.max(0, currentNorm - fineNorm), min, max, scale),
+          ),
+        );
       } else if (e.key === "PageUp") {
         e.preventDefault();
-        onChange(clampValue(normToValue(Math.min(1, currentNorm + coarseNorm), min, max, scale)));
+        onChange(
+          clampValue(
+            normToValue(Math.min(1, currentNorm + coarseNorm), min, max, scale),
+          ),
+        );
       } else if (e.key === "PageDown") {
         e.preventDefault();
-        onChange(clampValue(normToValue(Math.max(0, currentNorm - coarseNorm), min, max, scale)));
+        onChange(
+          clampValue(
+            normToValue(Math.max(0, currentNorm - coarseNorm), min, max, scale),
+          ),
+        );
       } else if (e.key === "Home") {
         e.preventDefault();
         onChange(min);
@@ -157,7 +176,7 @@ export function Knob({
         onPointerUp={handlePointerUp}
         onKeyDown={handleKeyDown}
         onBlur={handlePointerUp}
-        className="border-border bg-surface-alt relative cursor-grab rounded-full border active:cursor-grabbing focus:ring-accent/60 focus:ring-2 focus:outline-none"
+        className="border-border bg-surface-alt focus:ring-accent/60 relative cursor-grab rounded-full border focus:ring-2 focus:outline-none active:cursor-grabbing"
         style={{ width: size, height: size }}
       >
         {/* Track arc */}

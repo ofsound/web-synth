@@ -164,11 +164,11 @@ export class CymaticsGeometry implements VisualizerScene {
       const x =
         cx +
         ax *
-          Math.sin(this.curve.freqX * t + this.curve.phaseX + this.time * 0.5);
+        Math.sin(this.curve.freqX * t + this.curve.phaseX + this.time * 0.5);
       const y =
         cy +
         ay *
-          Math.sin(this.curve.freqY * t + this.curve.phaseY + this.time * 0.3);
+        Math.sin(this.curve.freqY * t + this.curve.phaseY + this.time * 0.3);
 
       if (i === 0) c.moveTo(x, y);
       else c.lineTo(x, y);
@@ -187,15 +187,15 @@ export class CymaticsGeometry implements VisualizerScene {
         const x =
           cx +
           ax *
-            0.8 *
-            Math.sin(this.curve.freqX * 2 * t + this.time * 0.7) *
-            Math.cos(this.curve.freqY * t);
+          0.8 *
+          Math.sin(this.curve.freqX * 2 * t + this.time * 0.7) *
+          Math.cos(this.curve.freqY * t);
         const y =
           cy +
           ay *
-            0.8 *
-            Math.cos(this.curve.freqX * t) *
-            Math.sin(this.curve.freqY * 2 * t + this.time * 0.4);
+          0.8 *
+          Math.cos(this.curve.freqX * t) *
+          Math.sin(this.curve.freqY * 2 * t + this.time * 0.4);
         if (i === 0) c.moveTo(x, y);
         else c.lineTo(x, y);
       }
