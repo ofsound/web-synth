@@ -1,0 +1,406 @@
+/**
+ * Polyphonic Step Sequencer — MIDI input source.
+ *
+ * A 16/32 step grid where each step can hold multiple MIDI notes (chords).
+ * Features: per-step velocity, gate length, probability, swing, BPM control.
+ * Emits noteOn/noteOff events to the shared MidiBus.
+ *
+ * Uses the Scheduler class (Chris Wilson look-ahead) for timing accuracy.
+ */
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Scheduler } from "../utils/scheduler";
+import { midiToNoteName } from "../utils/midiUtils";
+import type { MidiBus } from "./MidiBus";
+
+/* ── Types ── */
+
+export interface StepData {
+  notes: Set<number>; // MIDI note numbers active on this step
+  velocity: number; // 0–127
+  gate: number; // 0.1–1.0 (fraction of step duration)
+  probability: number; // 0–100 (%)
+}
+
+function createEmptyStep(): StepData {
+  return { notes: new Set(), velocity: 100, gate: 0.5, probability: 100 };
+}
+
+/* ── Preset rows — note values for the grid row labels ── */
+const DEFAULT_NOTES = [60, 62, 64, 65, 67, 69, 71, 72]; // C4 major scale
+
+/* ── Component ── */
+
+interface PolySequencerProps {
+  midiBus: MidiBus;
+  ctx: AudioContext | null;
+}
+
+export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
+  const [numSteps, setNumSteps] = useState(16);
+  const [bpm, setBpm] = useState(120);
+  const [swing, setSwing] = useState(0); // 0–0.5
+  const [playing, setPlaying] = useState(false);
+  const [currentStep, setCurrentStep] = useState(-1);
+
+  // Row notes (which MIDI notes the rows represent)
+  const [rowNotes] = useState<number[]>(DEFAULT_NOTES);
+
+  // Grid: array of StepData, one per step
+  const [steps, setSteps] = useState<StepData[]>(() =>
+    Array.from({ length: 32 }, () => createEmptyStep()),
+  );
+
+  // Refs for scheduler callbacks
+  const stepsRef = useRef(steps);
+  const swingRef = useRef(swing);
+  const schedulerRef = useRef<Scheduler | null>(null);
+
+  useEffect(() => {
+    stepsRef.current = steps;
+  }, [steps]);
+  useEffect(() => {
+    swingRef.current = swing;
+  }, [swing]);
+
+  // Update scheduler tempo
+  useEffect(() => {
+    if (schedulerRef.current) schedulerRef.current.setTempo(bpm);
+  }, [bpm]);
+
+  /** Toggle a note in a step */
+  const toggleNote = useCallback((stepIdx: number, note: number) => {
+    setSteps((prev) => {
+      const copy = [...prev];
+      const step = { ...copy[stepIdx], notes: new Set(copy[stepIdx].notes) };
+      if (step.notes.has(note)) {
+        step.notes.delete(note);
+      } else {
+        step.notes.add(note);
+      }
+      copy[stepIdx] = step;
+      return copy;
+    });
+  }, []);
+
+  /** Update per-step velocity */
+  const setStepVelocity = useCallback((stepIdx: number, vel: number) => {
+    setSteps((prev) => {
+      const copy = [...prev];
+      copy[stepIdx] = { ...copy[stepIdx], velocity: vel };
+      return copy;
+    });
+  }, []);
+
+  /** Update per-step gate */
+  const setStepGate = useCallback((stepIdx: number, gate: number) => {
+    setSteps((prev) => {
+      const copy = [...prev];
+      copy[stepIdx] = { ...copy[stepIdx], gate };
+      return copy;
+    });
+  }, []);
+
+  /** Update per-step probability */
+  const setStepProbability = useCallback((stepIdx: number, prob: number) => {
+    setSteps((prev) => {
+      const copy = [...prev];
+      copy[stepIdx] = { ...copy[stepIdx], probability: prob };
+      return copy;
+    });
+  }, []);
+
+  // Scheduler callback ref
+  const onStepRef = useRef<(time: number, step: number) => void>(() => {});
+
+  useEffect(() => {
+    onStepRef.current = (time: number, step: number) => {
+      const wrappedStep = step % numSteps;
+      setCurrentStep(wrappedStep);
+
+      const data = stepsRef.current[wrappedStep];
+      if (!data || data.notes.size === 0) return;
+
+      // Probability check
+      if (Math.random() * 100 > data.probability) return;
+
+      // Swing: delay even-numbered steps
+      let swingOffset = 0;
+      if (wrappedStep % 2 === 1 && swingRef.current > 0) {
+        const stepDuration = 60 / (bpm * 4); // 16th note duration
+        swingOffset = swingRef.current * stepDuration;
+      }
+
+      const stepDuration = 60 / (bpm * 4);
+      const gateTime = stepDuration * data.gate;
+
+      for (const note of data.notes) {
+        // Schedule noteOn
+        midiBus.emit({
+          type: "noteon",
+          channel: 0,
+          note,
+          velocity: data.velocity,
+        });
+
+        // Schedule noteOff after gate duration
+        setTimeout(
+          () => {
+            midiBus.emit({
+              type: "noteoff",
+              channel: 0,
+              note,
+              velocity: 0,
+            });
+          },
+          (gateTime + swingOffset) * 1000,
+        );
+      }
+    };
+  }, [numSteps, bpm, midiBus]);
+
+  // Start / Stop
+  useEffect(() => {
+    if (!ctx) return;
+
+    if (playing) {
+      const scheduler = new Scheduler(
+        ctx,
+        (time, step) => onStepRef.current(time, step),
+        { tempo: bpm, totalSteps: 9999, subdivision: 0.25 },
+      );
+      scheduler.start();
+      schedulerRef.current = scheduler;
+
+      return () => {
+        scheduler.stop();
+        schedulerRef.current = null;
+        setCurrentStep(-1);
+      };
+    } else {
+      if (schedulerRef.current) {
+        schedulerRef.current.stop();
+        schedulerRef.current = null;
+      }
+      setCurrentStep(-1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx, playing]);
+
+  /** Clear all steps */
+  const clearAll = useCallback(() => {
+    setSteps(Array.from({ length: 32 }, () => createEmptyStep()));
+  }, []);
+
+  /** Randomise pattern */
+  const randomize = useCallback(() => {
+    setSteps((prev) =>
+      prev.map((step, i) => {
+        if (i >= numSteps) return createEmptyStep();
+        const notes = new Set<number>();
+        for (const n of rowNotes) {
+          if (Math.random() < 0.25) notes.add(n);
+        }
+        return {
+          notes,
+          velocity: 60 + Math.floor(Math.random() * 67),
+          gate: 0.2 + Math.random() * 0.6,
+          probability: 70 + Math.floor(Math.random() * 30),
+        };
+      }),
+    );
+  }, [numSteps, rowNotes]);
+
+  return (
+    <div className="space-y-3">
+      {/* Transport controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => setPlaying((p) => !p)}
+          className={`rounded border px-3 py-1.5 text-xs font-medium ${
+            playing
+              ? "border-accent bg-accent/20 text-accent"
+              : "border-border text-text-muted"
+          }`}
+        >
+          {playing ? "■ Stop" : "▶ Play"}
+        </button>
+
+        <div className="flex items-center gap-1">
+          <label className="text-text-muted text-xs">BPM</label>
+          <input
+            type="number"
+            min={40}
+            max={300}
+            value={bpm}
+            onChange={(e) => setBpm(Number(e.target.value))}
+            className="border-border bg-surface-alt text-text w-16 rounded border px-2 py-1 text-xs"
+          />
+        </div>
+
+        <div className="flex items-center gap-1">
+          <label className="text-text-muted text-xs">Steps</label>
+          <select
+            value={numSteps}
+            onChange={(e) => setNumSteps(Number(e.target.value))}
+            className="border-border bg-surface-alt text-text rounded border px-2 py-1 text-xs"
+          >
+            <option value={8}>8</option>
+            <option value={16}>16</option>
+            <option value={32}>32</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <label className="text-text-muted text-xs">Swing</label>
+          <input
+            type="range"
+            min={0}
+            max={0.5}
+            step={0.01}
+            value={swing}
+            onChange={(e) => setSwing(Number(e.target.value))}
+            className="accent-accent w-20"
+          />
+          <span className="text-text-muted w-8 text-xs">
+            {Math.round(swing * 200)}%
+          </span>
+        </div>
+
+        <button
+          onClick={randomize}
+          className="border-border text-text-muted hover:text-text rounded border px-2 py-1 text-xs"
+        >
+          Randomize
+        </button>
+        <button
+          onClick={clearAll}
+          className="border-border text-text-muted hover:text-text rounded border px-2 py-1 text-xs"
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Step grid */}
+      <div className="overflow-x-auto">
+        <div className="inline-block min-w-full">
+          {/* Column headers (step numbers) */}
+          <div className="flex">
+            <div className="w-12 shrink-0" /> {/* Row label spacer */}
+            {Array.from({ length: numSteps }, (_, i) => (
+              <div
+                key={i}
+                className={`flex h-5 w-8 shrink-0 items-center justify-center text-[9px] ${
+                  i === currentStep
+                    ? "text-accent font-bold"
+                    : "text-text-muted"
+                }`}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+
+          {/* Note rows */}
+          {[...rowNotes].reverse().map((note) => (
+            <div key={note} className="flex">
+              <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
+                {midiToNoteName(note)}
+              </div>
+              {Array.from({ length: numSteps }, (_, stepIdx) => {
+                const isActive = steps[stepIdx].notes.has(note);
+                const isCurrent = stepIdx === currentStep;
+                return (
+                  <button
+                    key={stepIdx}
+                    onClick={() => toggleNote(stepIdx, note)}
+                    className={`h-6 w-8 shrink-0 border transition-colors ${
+                      isActive
+                        ? isCurrent
+                          ? "border-accent bg-accent"
+                          : "border-accent/60 bg-accent/40"
+                        : isCurrent
+                          ? "border-accent/30 bg-surface-raised"
+                          : stepIdx % 4 === 0
+                            ? "border-border bg-surface-alt"
+                            : "border-border/50 bg-surface"
+                    }`}
+                  />
+                );
+              })}
+            </div>
+          ))}
+
+          {/* Per-step velocity row */}
+          <div className="mt-1 flex">
+            <div className="text-text-muted flex w-12 shrink-0 items-center text-[9px]">
+              Vel
+            </div>
+            {Array.from({ length: numSteps }, (_, i) => (
+              <div key={i} className="flex w-8 shrink-0 justify-center">
+                <input
+                  type="range"
+                  min={0}
+                  max={127}
+                  value={steps[i].velocity}
+                  onChange={(e) => setStepVelocity(i, Number(e.target.value))}
+                  className="accent-accent h-4 w-7"
+                  style={{ writingMode: "vertical-lr" as never }}
+                  title={`Vel: ${steps[i].velocity}`}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Per-step gate row */}
+          <div className="flex">
+            <div className="text-text-muted flex w-12 shrink-0 items-center text-[9px]">
+              Gate
+            </div>
+            {Array.from({ length: numSteps }, (_, i) => (
+              <div key={i} className="flex w-8 shrink-0 justify-center">
+                <div
+                  className="bg-accent/30 mt-0.5 h-3 rounded-sm"
+                  style={{ width: `${steps[i].gate * 28}px` }}
+                  title={`Gate: ${Math.round(steps[i].gate * 100)}%`}
+                  onClick={() => {
+                    const next =
+                      steps[i].gate >= 0.9 ? 0.1 : steps[i].gate + 0.2;
+                    setStepGate(i, Math.min(next, 1));
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Per-step probability row */}
+          <div className="flex">
+            <div className="text-text-muted flex w-12 shrink-0 items-center text-[9px]">
+              Prob
+            </div>
+            {Array.from({ length: numSteps }, (_, i) => (
+              <div key={i} className="flex w-8 shrink-0 justify-center">
+                <div
+                  className={`mt-0.5 h-3 rounded-sm ${
+                    steps[i].probability >= 100
+                      ? "bg-success/40"
+                      : "bg-warning/40"
+                  }`}
+                  style={{ width: `${(steps[i].probability / 100) * 28}px` }}
+                  title={`Prob: ${steps[i].probability}%`}
+                  onClick={() => {
+                    const next =
+                      steps[i].probability >= 100
+                        ? 25
+                        : steps[i].probability + 25;
+                    setStepProbability(i, Math.min(next, 100));
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
