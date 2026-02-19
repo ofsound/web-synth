@@ -32,7 +32,7 @@ export const FMSynthPanel = memo(function FMSynthPanel({ params, setParams }: FM
 
   return (
     <div className="border-border rounded-lg border">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -60,7 +60,7 @@ export const FMSynthPanel = memo(function FMSynthPanel({ params, setParams }: FM
       </div>
 
       {!collapsed && (
-        <div id={contentId} className="space-y-3 px-3 pb-3">
+        <div id={contentId} className="space-y-4 px-4 pb-4">
           {/* Gain */}
           <Slider
             label="Gain"
@@ -121,8 +121,8 @@ export const FMSynthPanel = memo(function FMSynthPanel({ params, setParams }: FM
           {/* Amp ADSR */}
           <div>
             <p className="text-text-muted mb-1 text-[10px]">Amp Envelope</p>
-            <ADSREnvelope {...params.ampEnv} width={220} height={60} />
-            <div className="mt-1 grid grid-cols-2 gap-1">
+            <ADSREnvelope {...params.ampEnv} height={70} />
+            <div className="mt-2 grid gap-2">
               <Slider
                 label="A"
                 min={0.005}
@@ -174,7 +174,7 @@ export const FMSynthPanel = memo(function FMSynthPanel({ params, setParams }: FM
             <p className="text-text-muted mb-1 text-[10px]">
               Mod Index Envelope
             </p>
-            <div className="grid grid-cols-2 gap-1">
+            <div className="grid gap-2">
               <Slider
                 label="M.Atk"
                 min={0.005}
@@ -235,7 +235,7 @@ export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({ param
 
   return (
     <div className="border-border rounded-lg border">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -263,7 +263,7 @@ export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({ param
       </div>
 
       {!collapsed && (
-        <div id={contentId} className="space-y-3 px-3 pb-3">
+        <div id={contentId} className="space-y-4 px-4 pb-4">
           <Slider
             label="Gain"
             min={0}
@@ -326,8 +326,8 @@ export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({ param
           {/* Amp ADSR */}
           <div>
             <p className="text-text-muted mb-1 text-[10px]">Amp Envelope</p>
-            <ADSREnvelope {...params.ampEnv} width={220} height={60} />
-            <div className="mt-1 grid grid-cols-2 gap-1">
+            <ADSREnvelope {...params.ampEnv} height={70} />
+            <div className="mt-2 grid gap-2">
               <Slider
                 label="A"
                 min={0.005}
@@ -377,8 +377,8 @@ export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({ param
           {/* Filter ADSR */}
           <div>
             <p className="text-text-muted mb-1 text-[10px]">Filter Envelope</p>
-            <ADSREnvelope {...params.filterEnv} width={220} height={60} />
-            <div className="mt-1 grid grid-cols-2 gap-1">
+            <ADSREnvelope {...params.filterEnv} height={70} />
+            <div className="mt-2 grid gap-2">
               <Slider
                 label="F.A"
                 min={0.005}
@@ -450,7 +450,7 @@ export const GranularSynthPanel = memo(function GranularSynthPanel({ params, set
 
   return (
     <div className="border-border rounded-lg border">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -478,7 +478,7 @@ export const GranularSynthPanel = memo(function GranularSynthPanel({ params, set
       </div>
 
       {!collapsed && (
-        <div id={contentId} className="space-y-3 px-3 pb-3">
+        <div id={contentId} className="space-y-4 px-4 pb-4">
           <Slider
             label="Gain"
             min={0}
@@ -508,7 +508,7 @@ export const GranularSynthPanel = memo(function GranularSynthPanel({ params, set
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid gap-2">
             <Slider
               label="Position"
               min={0}
@@ -538,8 +538,8 @@ export const GranularSynthPanel = memo(function GranularSynthPanel({ params, set
           {/* Amp ADSR */}
           <div>
             <p className="text-text-muted mb-1 text-[10px]">Amp Envelope</p>
-            <ADSREnvelope {...params.ampEnv} width={220} height={60} />
-            <div className="mt-1 grid grid-cols-2 gap-1">
+            <ADSREnvelope {...params.ampEnv} height={70} />
+            <div className="mt-2 grid gap-2">
               <Slider
                 label="A"
                 min={0.005}

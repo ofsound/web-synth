@@ -34,10 +34,12 @@ export class MidiBus {
     };
   }
 
-  /** Send noteOff for all 128 notes — "panic" button. */
+  /** Send noteOff for all 128 notes on all 16 channels — "panic" button. */
   allNotesOff() {
-    for (let note = 0; note < 128; note++) {
-      this.emit({ type: "noteoff", channel: 0, note, velocity: 0 });
+    for (let channel = 0; channel < 16; channel++) {
+      for (let note = 0; note < 128; note++) {
+        this.emit({ type: "noteoff", channel, note, velocity: 0 });
+      }
     }
   }
 

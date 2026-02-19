@@ -466,123 +466,126 @@ export function PolySequencer({
   return (
     <div className="space-y-3">
       {/* Transport controls */}
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setPlaying((p) => !p)}
-          className={`rounded border px-3 py-1.5 text-xs font-medium ${
-            playing
-              ? "border-accent bg-accent/20 text-accent"
-              : "border-border text-text-muted"
-          }`}
-        >
-          {playing ? "■ Stop" : "▶ Play"}
-        </button>
+      <div className="grid gap-2 lg:grid-cols-2">
+        <div className="border-border bg-surface-alt/40 flex flex-wrap items-end gap-2 rounded border p-2">
+          <button
+            type="button"
+            onClick={() => setPlaying((p) => !p)}
+            className={`rounded border px-3 py-2 text-sm font-medium ${
+              playing
+                ? "border-accent bg-accent/20 text-accent"
+                : "border-border text-text-muted"
+            }`}
+          >
+            {playing ? "■ Stop" : "▶ Play"}
+          </button>
 
-        <div className="flex items-center gap-1">
-          <label htmlFor={bpmInputId} className="text-text-muted text-xs">
-            BPM
-          </label>
-          <input
-            id={bpmInputId}
-            name="bpm"
-            aria-label="Sequencer BPM"
-            type="number"
-            min={40}
-            max={300}
-            value={bpm}
-            onChange={(e) => setBpm(Number(e.target.value))}
-            className="border-border bg-surface-alt text-text w-16 rounded border px-2 py-1 text-xs"
-          />
+          <div className="flex items-center gap-2">
+            <label htmlFor={bpmInputId} className="text-text-muted text-xs">
+              BPM
+            </label>
+            <input
+              id={bpmInputId}
+              name="bpm"
+              aria-label="Sequencer BPM"
+              type="number"
+              min={40}
+              max={300}
+              value={bpm}
+              onChange={(e) => setBpm(Number(e.target.value))}
+              className="border-border bg-surface-alt text-text w-20 rounded border px-2 py-1.5 text-sm"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor={stepsSelectId} className="text-text-muted text-xs">
+              Steps
+            </label>
+            <select
+              id={stepsSelectId}
+              name="steps"
+              aria-label="Sequencer steps"
+              value={numSteps}
+              onChange={(e) => setNumSteps(Number(e.target.value))}
+              className="border-border bg-surface-alt text-text rounded border px-2 py-1.5 text-sm"
+            >
+              <option value={8}>8</option>
+              <option value={16}>16</option>
+              <option value={32}>32</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor={swingInputId} className="text-text-muted text-xs">
+              Swing
+            </label>
+            <input
+              id={swingInputId}
+              name="swing"
+              aria-label="Sequencer swing amount"
+              type="range"
+              min={0}
+              max={0.5}
+              step={0.01}
+              value={swing}
+              onChange={(e) => setSwing(Number(e.target.value))}
+              className="accent-accent h-6 w-28"
+            />
+            <span className="text-text-muted w-10 text-xs">
+              {Math.round(swing * 200)}%
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          <label htmlFor={stepsSelectId} className="text-text-muted text-xs">
-            Steps
-          </label>
-          <select
-            id={stepsSelectId}
-            name="steps"
-            aria-label="Sequencer steps"
-            value={numSteps}
-            onChange={(e) => setNumSteps(Number(e.target.value))}
-            className="border-border bg-surface-alt text-text rounded border px-2 py-1 text-xs"
+        <div className="border-border bg-surface-alt/40 flex flex-wrap items-end gap-2 rounded border p-2">
+          <button
+            type="button"
+            onClick={randomize}
+            className="border-border text-text-muted hover:text-text rounded border px-3 py-1.5 text-xs"
           >
-            <option value={8}>8</option>
-            <option value={16}>16</option>
-            <option value={32}>32</option>
-          </select>
-        </div>
-
-        <div className="flex items-center gap-1">
-          <label htmlFor={swingInputId} className="text-text-muted text-xs">
-            Swing
-          </label>
-          <input
-            id={swingInputId}
-            name="swing"
-            aria-label="Sequencer swing amount"
-            type="range"
-            min={0}
-            max={0.5}
-            step={0.01}
-            value={swing}
-            onChange={(e) => setSwing(Number(e.target.value))}
-            className="accent-accent w-20"
-          />
-          <span className="text-text-muted w-8 text-xs">
-            {Math.round(swing * 200)}%
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={randomize}
-          className="border-border text-text-muted hover:text-text rounded border px-2 py-1 text-xs"
-        >
-          Randomize
-        </button>
-        <button
-          type="button"
-          onClick={clearAll}
-          className="border-border text-text-muted hover:text-text rounded border px-2 py-1 text-xs"
-        >
-          Clear
-        </button>
-
-        {/* Scale and root note selector */}
-        <div className="flex items-center gap-1">
-          <span className="text-text-muted text-xs">Scale</span>
-          <select
-            id={`${idBase}-scale`}
-            value={scaleName as string}
-            onChange={(e) =>
-              setScaleName(e.target.value as keyof typeof SCALES)
-            }
-            aria-label="Sequencer scale"
-            name="scale"
-            className="border-border bg-surface-alt text-text rounded border px-2 py-1 text-xs"
+            Randomize
+          </button>
+          <button
+            type="button"
+            onClick={clearAll}
+            className="border-border text-text-muted hover:text-text rounded border px-3 py-1.5 text-xs"
           >
-            {Object.entries(SCALES).map(([key, { label }]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <select
-            id={`${idBase}-root-note`}
-            value={rootNote}
-            onChange={(e) => setRootNote(Number(e.target.value))}
-            aria-label="Sequencer root note"
-            name="root-note"
-            className="border-border bg-surface-alt text-text rounded border px-1.5 py-1 text-xs"
-          >
-            {ROOT_NAMES.map((name, i) => (
-              <option key={i} value={i}>
-                {name}
-              </option>
-            ))}
-          </select>
+            Clear
+          </button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-text-muted text-xs">Scale</span>
+            <select
+              id={`${idBase}-scale`}
+              value={scaleName as string}
+              onChange={(e) =>
+                setScaleName(e.target.value as keyof typeof SCALES)
+              }
+              aria-label="Sequencer scale"
+              name="scale"
+              className="border-border bg-surface-alt text-text rounded border px-2 py-1.5 text-sm"
+            >
+              {Object.entries(SCALES).map(([key, { label }]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <select
+              id={`${idBase}-root-note`}
+              value={rootNote}
+              onChange={(e) => setRootNote(Number(e.target.value))}
+              aria-label="Sequencer root note"
+              name="root-note"
+              className="border-border bg-surface-alt text-text rounded border px-2 py-1.5 text-sm"
+            >
+              {ROOT_NAMES.map((name, i) => (
+                <option key={i} value={i}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -601,7 +604,7 @@ export function PolySequencer({
             {Array.from({ length: numSteps }, (_, i) => (
               <div
                 key={i}
-                className="text-text-muted flex h-5 w-8 shrink-0 items-center justify-center text-[9px]"
+                className="text-text-muted flex h-6 w-8 shrink-0 items-center justify-center text-[10px]"
               >
                 {i + 1}
               </div>
@@ -615,7 +618,7 @@ export function PolySequencer({
             );
             return (
               <div key={note} className="flex">
-                <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
+                <div className="text-text-muted flex w-12 shrink-0 items-center text-xs">
                   {midiToNoteName(note)}
                 </div>
                 <NoteRow
@@ -630,7 +633,7 @@ export function PolySequencer({
 
           {/* Per-step velocity row */}
           <div className="mt-1 flex">
-            <div className="text-text-muted flex w-12 shrink-0 items-center text-[9px]">
+            <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
               Vel
             </div>
             {Array.from({ length: numSteps }, (_, i) => (
@@ -644,7 +647,7 @@ export function PolySequencer({
                   max={127}
                   value={steps[i].velocity}
                   onChange={(e) => setStepVelocity(i, Number(e.target.value))}
-                  className="accent-accent h-4 w-7"
+                  className="accent-accent h-7 w-7 cursor-pointer"
                   style={{ writingMode: "vertical-lr" as never }}
                   title={`Vel: ${steps[i].velocity}`}
                 />
@@ -654,15 +657,14 @@ export function PolySequencer({
 
           {/* Per-step gate row */}
           <div className="flex">
-            <div className="text-text-muted flex w-12 shrink-0 items-center text-[9px]">
+            <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
               Gate
             </div>
             {Array.from({ length: numSteps }, (_, i) => (
               <div key={i} className="flex w-8 shrink-0 justify-center">
                 <button
                   type="button"
-                  className="bg-accent/30 mt-0.5 h-3 rounded-sm"
-                  style={{ width: `${steps[i].gate * 28}px` }}
+                  className="border-border bg-surface-alt mt-0.5 flex h-4 w-7 items-center rounded-sm border px-0.5"
                   title={`Gate: ${Math.round(steps[i].gate * 100)}%`}
                   aria-label={`Step ${i + 1} gate ${Math.round(steps[i].gate * 100)} percent`}
                   onClick={() => {
@@ -670,26 +672,26 @@ export function PolySequencer({
                       steps[i].gate >= 0.9 ? 0.1 : steps[i].gate + 0.2;
                     setStepGate(i, Math.min(next, 1));
                   }}
-                />
+                >
+                  <span
+                    className="bg-accent/50 block h-2 rounded-xs"
+                    style={{ width: `${Math.max(2, steps[i].gate * 24)}px` }}
+                  />
+                </button>
               </div>
             ))}
           </div>
 
           {/* Per-step probability row */}
           <div className="flex">
-            <div className="text-text-muted flex w-12 shrink-0 items-center text-[9px]">
+            <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
               Prob
             </div>
             {Array.from({ length: numSteps }, (_, i) => (
               <div key={i} className="flex w-8 shrink-0 justify-center">
                 <button
                   type="button"
-                  className={`mt-0.5 h-3 rounded-sm ${
-                    steps[i].probability >= 100
-                      ? "bg-success/40"
-                      : "bg-warning/40"
-                  }`}
-                  style={{ width: `${(steps[i].probability / 100) * 28}px` }}
+                  className="border-border bg-surface-alt mt-0.5 flex h-4 w-7 items-center rounded-sm border px-0.5"
                   title={`Prob: ${steps[i].probability}%`}
                   aria-label={`Step ${i + 1} probability ${steps[i].probability} percent`}
                   onClick={() => {
@@ -699,7 +701,18 @@ export function PolySequencer({
                         : steps[i].probability + 25;
                     setStepProbability(i, Math.min(next, 100));
                   }}
-                />
+                >
+                  <span
+                    className={`block h-2 rounded-xs ${
+                      steps[i].probability >= 100
+                        ? "bg-success/50"
+                        : "bg-warning/50"
+                    }`}
+                    style={{
+                      width: `${Math.max(2, (steps[i].probability / 100) * 24)}px`,
+                    }}
+                  />
+                </button>
               </div>
             ))}
           </div>

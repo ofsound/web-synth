@@ -62,19 +62,23 @@ describe("MidiBus", () => {
         expect(bus.size).toBe(0);
     });
 
-    it("allNotesOff emits 128 noteoff events", () => {
+    it("allNotesOff emits noteoff events for all notes on all channels", () => {
         const bus = new MidiBus();
         const events: MidiEvent[] = [];
         bus.subscribe((e) => events.push(e));
 
         bus.allNotesOff();
 
-        expect(events).toHaveLength(128);
+        expect(events).toHaveLength(16 * 128);
         expect(events.every((e) => e.type === "noteoff")).toBe(true);
         expect(events.every((e) => e.velocity === 0)).toBe(true);
-        // Verify all 128 notes are covered
-        const notes = events.map((e) => e.note);
-        expect(notes).toEqual(Array.from({ length: 128 }, (_, i) => i));
+
+        for (let channel = 0; channel < 16; channel++) {
+            const notes = events
+                .filter((e) => e.channel === channel)
+                .map((e) => e.note);
+            expect(notes).toEqual(Array.from({ length: 128 }, (_, i) => i));
+        }
     });
 
     it("isolates subscriber errors — other listeners still fire", () => {
