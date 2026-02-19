@@ -62,7 +62,3 @@ export function createScene(idx: number): VisualizerScene {
     return new Ctor();
 }
 
-/** @deprecated Use SCENE_METAS + createScene(idx) instead. */
-export function createScenes(): VisualizerScene[] {
-    return SCENE_METAS.map((_, i) => createScene(i));
-}

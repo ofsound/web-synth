@@ -27,6 +27,8 @@ import type { VisualizerScene } from "./scenes/types";
 import { ThumbnailStrip } from "./ThumbnailStrip.tsx";
 import { MappingModal } from "./MappingModal.tsx";
 
+const MAPPINGS_STORAGE_KEY = "web-synth:visualizer-mappings";
+
 function useVisualizerLoop(
   containerRef: RefObject<HTMLDivElement | null>,
   canvasRef: RefObject<HTMLCanvasElement | null>,
@@ -174,13 +176,36 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
   const activeCanvasRef =
     activeScene?.type === "canvas2d" ? canvas2dRef : webglCanvasRef;
 
-  // Mappings are initialised from static metadata — no scene instances needed.
+  // Mappings are initialised from localStorage (with defaults for missing scenes).
   const [mappingsMap, setMappingsMap] = useState<Record<string, MidiMapping[]>>(
-    () =>
-      Object.fromEntries(
+    () => {
+      const defaults = Object.fromEntries(
         SCENE_METAS.map((m) => [m.id, [...m.defaultMappings]]),
-      ),
+      );
+      try {
+        const stored = localStorage.getItem(MAPPINGS_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as Record<string, MidiMapping[]>;
+          // Merge: keep stored values but fill in any new scenes with defaults.
+          return Object.fromEntries(
+            SCENE_METAS.map((m) => [m.id, parsed[m.id] ?? [...m.defaultMappings]]),
+          );
+        }
+      } catch {
+        /* ignore parse/quota errors */
+      }
+      return defaults;
+    },
   );
+
+  // Persist mappings whenever they change.
+  useEffect(() => {
+    try {
+      localStorage.setItem(MAPPINGS_STORAGE_KEY, JSON.stringify(mappingsMap));
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [mappingsMap]);
 
   const activeMeta = SCENE_METAS[activeIdx] ?? SCENE_METAS[0];
   const activeId = activeMeta.id;

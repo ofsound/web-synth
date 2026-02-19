@@ -1,17 +1,25 @@
 /**
  * Web MIDI hardware input adapter.
  *
- * Reuses the logic from useMidi.ts but forwards parsed events
- * into the shared MidiBus instead of providing its own subscriber.
+ * Requests MIDI access, tracks the browser permission state, and forwards
+ * parsed MIDI events into the shared MidiBus.
+ *
+ * Returns:
+ *   supported      — true when the Web MIDI API exists in this browser
+ *   inputs         — display names of connected MIDI input devices
+ *   permissionState — 'granted' | 'denied' | 'prompt' | 'unknown'
  */
 
 import { useEffect, useState } from "react";
 import type { MidiBus } from "./MidiBus";
 import type { MidiEvent } from "./MidiBus";
 
+export type MidiPermissionState = "granted" | "denied" | "prompt" | "unknown";
+
 export function useWebMidiInput(midiBus: MidiBus) {
     const [supported, setSupported] = useState(false);
     const [inputs, setInputs] = useState<string[]>([]);
+    const [permissionState, setPermissionState] = useState<MidiPermissionState>("unknown");
 
     useEffect(() => {
         if (!navigator.requestMIDIAccess) {
@@ -19,6 +27,19 @@ export function useWebMidiInput(midiBus: MidiBus) {
             return;
         }
         queueMicrotask(() => setSupported(true));
+
+        // Pre-query permission status so the UI can show a helpful message.
+        if (navigator.permissions) {
+            navigator.permissions
+                .query({ name: "midi" as PermissionName })
+                .then((status) => {
+                    setPermissionState(status.state as MidiPermissionState);
+                    status.onchange = () => {
+                        setPermissionState(status.state as MidiPermissionState);
+                    };
+                })
+                .catch(() => setPermissionState("unknown"));
+        }
 
         let cancelled = false;
         let accessRef: MIDIAccess | null = null;
@@ -78,6 +99,7 @@ export function useWebMidiInput(midiBus: MidiBus) {
             .then((access) => {
                 if (cancelled) return;
                 accessRef = access;
+                setPermissionState("granted");
 
                 access.onstatechange = () => {
                     bindAllInputs(access);
@@ -89,6 +111,7 @@ export function useWebMidiInput(midiBus: MidiBus) {
             })
             .catch(() => {
                 if (cancelled) return;
+                setPermissionState("denied");
                 queueMicrotask(() => {
                     if (cancelled) return;
                     setInputs([]);
@@ -104,5 +127,5 @@ export function useWebMidiInput(midiBus: MidiBus) {
         };
     }, [midiBus]);
 
-    return { supported, inputs };
+    return { supported, inputs, permissionState };
 }

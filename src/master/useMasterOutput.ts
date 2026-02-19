@@ -87,10 +87,12 @@ export function useMasterOutput(
     limiter.attack.value = LIMITER_ATTACK;
     limiter.release.value = LIMITER_RELEASE;
 
-    // Wire: synthMix → effectsSend → [effects rack patches here] → effectsReturn → masterGain
+    // Wire: synthMix → effectsSend → [effects rack] → effectsReturn → masterGain
     synthMix.connect(effectsSend);
-    // NOTE: No default bypass here — useEffectRack owns the send→return routing
-    // to avoid temporary double-bypass (+6dB) on mount.
+    // Default bypass: ensures audio flows from the very first render, before
+    // useEffectRack's effect has run.  useEffectRack.fullRewire calls
+    // safeDisconnect(effectsSend) before rebuilding routes, cleanly removing this.
+    effectsSend.connect(effectsReturn);
     effectsReturn.connect(masterGain);
 
     // Wire: masterGain → limiter → output target

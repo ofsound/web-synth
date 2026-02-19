@@ -4,6 +4,7 @@
  * and up/down reorder buttons.
  */
 
+import { memo } from "react";
 import { Slider } from "./Slider";
 import type { DelayParams } from "../effects/useDelay";
 import type { PhaserParams } from "../effects/usePhaser";
@@ -83,7 +84,7 @@ interface DelayCardProps {
   onMoveDown: () => void;
 }
 
-export function DelayCard({
+export const DelayCard = memo(function DelayCard({
   params,
   setParams,
   enabled,
@@ -126,7 +127,7 @@ export function DelayCard({
       />
     </EffectCardShell>
   );
-}
+});
 
 /* ── Phaser Card ── */
 
@@ -139,7 +140,7 @@ interface PhaserCardProps {
   onMoveDown: () => void;
 }
 
-export function PhaserCard({
+export const PhaserCard = memo(function PhaserCard({
   params,
   setParams,
   enabled,
@@ -182,7 +183,7 @@ export function PhaserCard({
       />
     </EffectCardShell>
   );
-}
+});
 
 /* ── Bitcrusher Card ── */
 
@@ -195,7 +196,7 @@ interface BitcrusherCardProps {
   onMoveDown: () => void;
 }
 
-export function BitcrusherCard({
+export const BitcrusherCard = memo(function BitcrusherCard({
   params,
   setParams,
   enabled,
@@ -230,4 +231,4 @@ export function BitcrusherCard({
       />
     </EffectCardShell>
   );
-}
+});

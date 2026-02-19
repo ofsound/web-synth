@@ -32,7 +32,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
 } from "react";
 import { VoiceManager } from "./VoiceManager";
@@ -85,8 +84,9 @@ export function useSynthBase<P extends BaseSynthParams, V>(
 
   const vmRef = useRef<VoiceManager<V> | null>(null);
   const callbacksRef = useRef(callbacks);
-
-  useLayoutEffect(() => {
+  // Keep ref in sync using an effect — satisfies react-hooks/refs while
+  // ensuring the VoiceManager always calls the latest version.
+  useEffect(() => {
     callbacksRef.current = callbacks;
   }, [callbacks]);
 

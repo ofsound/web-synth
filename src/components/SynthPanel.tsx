@@ -4,7 +4,7 @@
  * along with shared ADSR and gain controls.
  */
 
-import { useId, useState } from "react";
+import { memo, useId, useState } from "react";
 import { Slider } from "./Slider";
 import { Knob } from "./Knob";
 import { ADSREnvelope } from "./ADSREnvelope";
@@ -19,7 +19,7 @@ interface FMPanelProps {
   setParams: React.Dispatch<React.SetStateAction<FMSynthParams>>;
 }
 
-export function FMSynthPanel({ params, setParams }: FMPanelProps) {
+export const FMSynthPanel = memo(function FMSynthPanel({ params, setParams }: FMPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
 
@@ -213,7 +213,7 @@ export function FMSynthPanel({ params, setParams }: FMPanelProps) {
       )}
     </div>
   );
-}
+});
 
 /* ── Subtractive Synth Panel ── */
 
@@ -222,7 +222,7 @@ interface SubPanelProps {
   setParams: React.Dispatch<React.SetStateAction<SubtractiveSynthParams>>;
 }
 
-export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
+export const SubtractiveSynthPanel = memo(function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
 
@@ -428,7 +428,7 @@ export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
       )}
     </div>
   );
-}
+});
 
 /* ── Granular Synth Panel ── */
 
@@ -437,7 +437,7 @@ interface GranPanelProps {
   setParams: React.Dispatch<React.SetStateAction<GranularSynthParams>>;
 }
 
-export function GranularSynthPanel({ params, setParams }: GranPanelProps) {
+export const GranularSynthPanel = memo(function GranularSynthPanel({ params, setParams }: GranPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
 
@@ -589,4 +589,4 @@ export function GranularSynthPanel({ params, setParams }: GranPanelProps) {
       )}
     </div>
   );
-}
+});

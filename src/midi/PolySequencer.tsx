@@ -384,6 +384,10 @@ export function PolySequencer({
   useEffect(() => {
     if (!ctx) return;
 
+    // Capture DOM refs for use in the cleanup to avoid stale-ref lint warning.
+    const highlightEl = highlightRef.current;
+    const headerEl = headerRowRef.current;
+
     if (playing) {
       const scheduler = new Scheduler(
         ctx,
@@ -402,10 +406,10 @@ export function PolySequencer({
         clearPendingTimeouts();
         flushSequencerNotes();
         currentStepRef.current = -1;
-        if (highlightRef.current) highlightRef.current.style.display = "none";
-        if (headerRowRef.current) {
-          for (let c = 1; c < headerRowRef.current.children.length; c++) {
-            const el = headerRowRef.current.children[c] as HTMLElement;
+        if (highlightEl) highlightEl.style.display = "none";
+        if (headerEl) {
+          for (let c = 1; c < headerEl.children.length; c++) {
+            const el = headerEl.children[c] as HTMLElement;
             el.classList.remove("text-accent", "font-bold");
             el.classList.add("text-text-muted");
           }

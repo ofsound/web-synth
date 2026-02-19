@@ -24,6 +24,7 @@ import { useSynthOrchestrator } from "./hooks/useSynthOrchestrator";
 
 // MIDI inputs
 import { useWebMidiInput } from "./midi/WebMidiInput";
+import type { MidiPermissionState } from "./midi/WebMidiInput";
 import { KeyboardInput } from "./midi/KeyboardInput";
 import { PolySequencer } from "./midi/PolySequencer";
 import { MidiFilePlayer } from "./midi/MidiFilePlayer";
@@ -56,7 +57,7 @@ import type { EffectSlot, RoutingMode } from "./effects/useEffectRack";
 import type { MidiChannelMode } from "./midi/channelPolicy";
 import { usePresetManager } from "./hooks/usePresetManager";
 import { useMidiCCMapping, CC_TARGETS } from "./midi/useMidiCCMapping";
-import type { CCMappingSetters } from "./midi/useMidiCCMapping";
+import type { CCMappingSetters, UseMidiCCMappingResult } from "./midi/useMidiCCMapping";
 
 /* ── Memoized Section Components ── */
 
@@ -99,6 +100,7 @@ const MidiInputSection = memo(function MidiInputSection({
   midiBus,
   midiSupported,
   midiInputs,
+  midiPermissionState,
   ctx,
   keyboardChannelMode,
   sequencerChannelMode,
@@ -109,6 +111,7 @@ const MidiInputSection = memo(function MidiInputSection({
   midiBus: MidiBus;
   midiSupported: boolean;
   midiInputs: string[];
+  midiPermissionState: MidiPermissionState;
   ctx: AudioContext | null;
   keyboardChannelMode: MidiChannelMode;
   sequencerChannelMode: MidiChannelMode;
@@ -126,16 +129,24 @@ const MidiInputSection = memo(function MidiInputSection({
       <div className="text-text-muted mb-2 flex items-center gap-2 text-xs">
         <span
           className={`inline-block h-2 w-2 rounded-full ${
-            midiSupported ? "bg-success" : "bg-text-muted/30"
+            midiPermissionState === "denied"
+              ? "bg-danger"
+              : midiSupported
+                ? "bg-success"
+                : "bg-text-muted/30"
           }`}
         />
         <span>
           Web MIDI:{" "}
-          {midiSupported
-            ? midiInputs.length > 0
-              ? midiInputs.join(", ")
-              : "Supported (no devices)"
-            : "Not supported"}
+          {!midiSupported
+            ? "Not supported"
+            : midiPermissionState === "denied"
+              ? "Permission denied — check browser settings"
+              : midiPermissionState === "prompt"
+                ? "Permission required"
+                : midiInputs.length > 0
+                  ? midiInputs.join(", ")
+                  : "Supported (no devices)"}
         </span>
       </div>
 
@@ -321,6 +332,83 @@ const MasterOutputSection = memo(function MasterOutputSection({
   );
 });
 
+/* ── MIDI CC Mapping Section ── */
+
+const MidiCCMappingSection = memo(function MidiCCMappingSection({
+  ccMapping,
+}: {
+  ccMapping: UseMidiCCMappingResult;
+}) {
+  return (
+    <section>
+      <h2 className="text-text-muted mb-2 text-xs font-semibold tracking-wider uppercase">
+        MIDI CC Mapping
+      </h2>
+      <div className="border-border space-y-2 rounded-lg border p-3">
+        {/* CC Learn row */}
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id="cc-target-select"
+            name="cc-target-select"
+            className="bg-surface border-border text-text rounded border px-2 py-1 text-xs"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) ccMapping.startLearn(e.target.value);
+            }}
+          >
+            <option value="">CC Learn…</option>
+            {Object.entries(CC_TARGETS).map(([key, { label }]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+          {ccMapping.learning && (
+            <span className="text-accent animate-pulse text-xs">
+              Move a CC knob…{" "}
+              <button
+                type="button"
+                onClick={ccMapping.cancelLearn}
+                className="text-text-muted underline"
+              >
+                cancel
+              </button>
+            </span>
+          )}
+        </div>
+
+        {/* Active mappings */}
+        {ccMapping.mappings.length === 0 ? (
+          <p className="text-text-muted text-[10px]">
+            No CC mappings. Select a target above, then move a MIDI CC
+            knob/slider to bind.
+          </p>
+        ) : (
+          <div className="grid gap-1">
+            {ccMapping.mappings.map((m) => (
+              <div
+                key={m.cc}
+                className="text-text flex items-center justify-between text-[10px]"
+              >
+                <span>
+                  CC {m.cc} → {m.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => ccMapping.removeMapping(m.cc)}
+                  className="text-danger text-[10px]"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+});
+
 export default function App() {
   const { ctx, resume } = useAudioContext();
   const midiBus = useMidiBus();
@@ -367,7 +455,7 @@ export default function App() {
   });
 
   // ── MIDI inputs ──
-  const { supported: midiSupported, inputs: midiInputs } =
+  const { supported: midiSupported, inputs: midiInputs, permissionState: midiPermissionState } =
     useWebMidiInput(midiBus);
 
   // Ref for stable effect rack actions — avoids renderEffectCard churn when
@@ -628,6 +716,7 @@ export default function App() {
                 midiBus={midiBus}
                 midiSupported={midiSupported}
                 midiInputs={midiInputs}
+                midiPermissionState={midiPermissionState}
                 ctx={ctx}
                 keyboardChannelMode={keyboardChannelMode}
                 sequencerChannelMode={sequencerChannelMode}
@@ -676,72 +765,9 @@ export default function App() {
             </ErrorBoundary>
 
             {/* ═══ SECTION 5: MIDI CC MAPPING ═══ */}
-            <section>
-              <h2 className="text-text-muted mb-2 text-xs font-semibold tracking-wider uppercase">
-                MIDI CC Mapping
-              </h2>
-              <div className="border-border space-y-2 rounded-lg border p-3">
-                {/* CC Learn row */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    id="cc-target-select"
-                    name="cc-target-select"
-                    className="bg-surface border-border text-text rounded border px-2 py-1 text-xs"
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) ccMapping.startLearn(e.target.value);
-                    }}
-                  >
-                    <option value="">CC Learn…</option>
-                    {Object.entries(CC_TARGETS).map(([key, { label }]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  {ccMapping.learning && (
-                    <span className="text-accent animate-pulse text-xs">
-                      Move a CC knob…{" "}
-                      <button
-                        type="button"
-                        onClick={ccMapping.cancelLearn}
-                        className="text-text-muted underline"
-                      >
-                        cancel
-                      </button>
-                    </span>
-                  )}
-                </div>
-
-                {/* Active mappings */}
-                {ccMapping.mappings.length === 0 ? (
-                  <p className="text-text-muted text-[10px]">
-                    No CC mappings. Select a target above, then move a MIDI CC
-                    knob/slider to bind.
-                  </p>
-                ) : (
-                  <div className="grid gap-1">
-                    {ccMapping.mappings.map((m) => (
-                      <div
-                        key={m.cc}
-                        className="text-text flex items-center justify-between text-[10px]"
-                      >
-                        <span>
-                          CC {m.cc} → {m.label}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => ccMapping.removeMapping(m.cc)}
-                          className="text-danger text-[10px]"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
+            <ErrorBoundary>
+              <MidiCCMappingSection ccMapping={ccMapping} />
+            </ErrorBoundary>
           </div>
         </div>
 
