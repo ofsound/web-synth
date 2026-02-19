@@ -8,7 +8,7 @@
  * Decomposed into section sub-components to isolate re-renders.
  */
 
-import { Suspense, lazy, memo, useCallback, useRef, useState } from "react";
+import { Suspense, lazy, memo, useCallback, useRef, useEffect, useState } from "react";
 import { useAudioContext } from "./hooks/useAudioContext";
 import { useMidiBus } from "./midi/useMidiBus";
 import { useSynthOrchestrator } from "./hooks/useSynthOrchestrator";
@@ -362,15 +362,23 @@ export default function App() {
   const { supported: midiSupported, inputs: midiInputs } =
     useWebMidiInput(midiBus);
 
+  // Ref for stable effect rack actions — avoids renderEffectCard churn when
+  // slots/routingMode change. Methods from useEffectRack are useCallback-stable.
+  const effectRackRef = useRef(effectRack);
+  useEffect(() => {
+    effectRackRef.current = effectRack;
+  }, [effectRack]);
+
   // Render-map for effect cards — add new effects here without touching
-  // EffectsRackSection. Each entry closes over its own params & setParams.
+  // EffectsRackSection. Uses effectRackRef to avoid depending on effectRack.
   const renderEffectCard = useCallback(
     (slot: EffectSlot): React.ReactNode => {
+      const rack = effectRackRef.current;
       const common = {
         enabled: slot.enabled,
-        onToggle: () => effectRack.toggleEffect(slot.id),
-        onMoveUp: () => effectRack.moveEffect(slot.id, "up"),
-        onMoveDown: () => effectRack.moveEffect(slot.id, "down"),
+        onToggle: () => rack.toggleEffect(slot.id),
+        onMoveUp: () => rack.moveEffect(slot.id, "up"),
+        onMoveDown: () => rack.moveEffect(slot.id, "down"),
       };
       switch (slot.id) {
         case "delay":
@@ -405,7 +413,6 @@ export default function App() {
       }
     },
     [
-      effectRack,
       delay.params,
       delay.setParams,
       phaser.params,
@@ -460,39 +467,58 @@ export default function App() {
     masterVolume,
   ]);
 
-  const handleLoadPreset = useCallback(
-    (name: string) => {
-      const preset = loadPreset(name);
-      if (!preset) return;
-      fmSynth.setParams(preset.fm);
-      subSynth.setParams(preset.sub);
-      granSynth.setParams(preset.gran);
-      delay.setParams(preset.effects.delayParams);
-      phaser.setParams(preset.effects.phaserParams);
-      bitcrusher.setParams(preset.effects.bitcrusherParams);
-      for (const s of preset.effects.rackSlots) {
-        effectRack.setEffectEnabled(s.id, s.enabled);
-      }
-      effectRack.setRoutingMode(preset.effects.routingMode);
-      setFmChannel(preset.channels.fmChannel);
-      setSubChannel(preset.channels.subChannel);
-      setGranChannel(preset.channels.granChannel);
-      setMasterVolume(preset.masterVolume);
-    },
-    [
-      fmSynth,
-      subSynth,
-      granSynth,
-      delay,
-      phaser,
-      bitcrusher,
-      effectRack,
-      setMasterVolume,
-      setFmChannel,
-      setSubChannel,
-      setGranChannel,
-    ],
-  );
+  // Use refs for preset load to avoid dependency on full synth/effect objects.
+  const presetSettersRef = useRef({
+    setFmParams: fmSynth.setParams,
+    setSubParams: subSynth.setParams,
+    setGranParams: granSynth.setParams,
+    setDelayParams: delay.setParams,
+    setPhaserParams: phaser.setParams,
+    setBitcrusherParams: bitcrusher.setParams,
+    setEffectEnabled: effectRack.setEffectEnabled,
+    setRoutingMode: effectRack.setRoutingMode,
+  });
+  useEffect(() => {
+    presetSettersRef.current = {
+      setFmParams: fmSynth.setParams,
+      setSubParams: subSynth.setParams,
+      setGranParams: granSynth.setParams,
+      setDelayParams: delay.setParams,
+      setPhaserParams: phaser.setParams,
+      setBitcrusherParams: bitcrusher.setParams,
+      setEffectEnabled: effectRack.setEffectEnabled,
+      setRoutingMode: effectRack.setRoutingMode,
+    };
+  }, [
+    fmSynth.setParams,
+    subSynth.setParams,
+    granSynth.setParams,
+    delay.setParams,
+    phaser.setParams,
+    bitcrusher.setParams,
+    effectRack.setEffectEnabled,
+    effectRack.setRoutingMode,
+  ]);
+
+  const handleLoadPreset = useCallback((name: string) => {
+    const preset = loadPreset(name);
+    if (!preset) return;
+    const s = presetSettersRef.current;
+    s.setFmParams(preset.fm);
+    s.setSubParams(preset.sub);
+    s.setGranParams(preset.gran);
+    s.setDelayParams(preset.effects.delayParams);
+    s.setPhaserParams(preset.effects.phaserParams);
+    s.setBitcrusherParams(preset.effects.bitcrusherParams);
+    for (const slot of preset.effects.rackSlots) {
+      s.setEffectEnabled(slot.id, slot.enabled);
+    }
+    s.setRoutingMode(preset.effects.routingMode);
+    setFmChannel(preset.channels.fmChannel);
+    setSubChannel(preset.channels.subChannel);
+    setGranChannel(preset.channels.granChannel);
+    setMasterVolume(preset.masterVolume);
+  }, []); // Setters from ref; state setters (setFmChannel, etc.) are stable
 
   const handleDeletePreset = useCallback((name: string) => {
     deletePreset(name);

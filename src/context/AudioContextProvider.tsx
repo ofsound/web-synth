@@ -82,6 +82,27 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+      {/* Tap-to-start overlay: browsers require user interaction before AudioContext can run */}
+      {!ctx && (
+        <div
+          className="bg-surface/95 text-text fixed inset-0 z-[100] flex cursor-pointer flex-col items-center justify-center gap-4 backdrop-blur-sm"
+          onClick={init}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") init();
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Tap or press any key to start audio"
+        >
+          <span className="text-accent text-6xl" aria-hidden>
+            ▶
+          </span>
+          <p className="text-lg font-medium">Tap to start</p>
+          <p className="text-text-muted max-w-xs text-center text-sm">
+            Your browser requires a tap or key press before audio can play.
+          </p>
+        </div>
+      )}
     </AudioCtxContext.Provider>
   );
 }

@@ -257,7 +257,8 @@ export class GeometricOrbits implements VisualizerScene {
     if (!orb) return;
 
     orb.tween?.kill();
-    // Keep the mesh in the map during the release tween so dispose() can find it
+    // Store release tween in orb.tween so resetOrbits/dispose can kill it.
+    // Mesh stays in meshes until onComplete so dispose() finds it for cleanup.
     const releaseTween = gsap.to(orb.mesh.scale, {
       x: 0,
       y: 0,
