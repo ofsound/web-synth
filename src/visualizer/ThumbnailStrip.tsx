@@ -31,8 +31,7 @@ export function ThumbnailStrip({
             i === activeIdx
               ? "border-accent bg-accent/10 text-accent"
               : "border-border text-text-muted hover:border-text-muted/50 hover:text-text"
-          } ${disabled ? "cursor-not-allowed opacity-70" : ""}
-          `}
+          } ${disabled ? "cursor-not-allowed opacity-70" : ""} `}
           title={scene.name}
         >
           <span className="text-sm">{scene.thumbnail}</span>
