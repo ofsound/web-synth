@@ -21,7 +21,7 @@ const MAX_GRANULAR_VOICES = 8;
 
 interface GranularVoice {
   voiceGain: GainNode;
-  timerId: ReturnType<typeof setTimeout> | null;
+  nextGrainTime: number;
   note: number;
 }
 
@@ -53,11 +53,17 @@ export const DEFAULT_GRANULAR_PARAMS: GranularSynthParams = {
   enabled: true,
 };
 
-function hanningWindow(length: number): Float32Array {
+const WINDOW_CACHE = new Map<number, Float32Array>();
+
+function getHanningWindow(length: number): Float32Array {
+  if (WINDOW_CACHE.has(length)) {
+    return WINDOW_CACHE.get(length)!;
+  }
   const win = new Float32Array(length);
   for (let i = 0; i < length; i++) {
     win[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (length - 1)));
   }
+  WINDOW_CACHE.set(length, win);
   return win;
 }
 
@@ -121,7 +127,7 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
     }
   }, [params.gain]);
 
-  const spawnGrain = (voiceGain: GainNode, playbackRate: number) => {
+  const spawnGrain = (voiceGain: GainNode, playbackRate: number, time: number) => {
     if (!ctx || !sourceBufferRef.current) return;
     const p = paramsRef.current;
     const buf = sourceBufferRef.current;
@@ -143,44 +149,63 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
     const env = ctx.createGain();
     env.gain.value = 0;
     const winLen = Math.max(Math.round(grainDur * ctx.sampleRate), 4);
-    const win = hanningWindow(winLen);
+    const win = getHanningWindow(winLen);
 
     src.connect(env);
     env.connect(voiceGain);
 
-    const now = ctx.currentTime;
     try {
-      env.gain.setValueCurveAtTime(win, now, grainDur);
+      env.gain.setValueCurveAtTime(win, time, grainDur);
     } catch {
-      env.gain.setValueAtTime(0, now);
-      env.gain.linearRampToValueAtTime(1, now + grainDur * 0.5);
-      env.gain.linearRampToValueAtTime(0, now + grainDur);
+      env.gain.setValueAtTime(0, time);
+      env.gain.linearRampToValueAtTime(1, time + grainDur * 0.5);
+      env.gain.linearRampToValueAtTime(0, time + grainDur);
     }
 
-    src.start(now, startPos, grainDur);
-    src.stop(now + grainDur + 0.01);
+    src.start(time, startPos, grainDur);
+    src.stop(time + grainDur + 0.05); // slightly longer to ensure full envelope
     src.onended = () => {
       src.disconnect();
       env.disconnect();
     };
   };
 
-  const scheduleNextGrain = (
-    voiceGain: GainNode,
-    playbackRate: number,
-    voice: GranularVoice,
-  ) => {
-    if (voice.timerId === null) return;
+  const schedulerRef = useRef<number>(0);
 
-    const p = paramsRef.current;
-    const intervalMs = 1000 / p.density;
+  // Lookahead scheduler loop
+  useEffect(() => {
+    if (!ctx) return;
 
-    spawnGrain(voiceGain, playbackRate);
+    const lookahead = 0.1; // 100ms lookahead
+    const schedule = () => {
+      const now = ctx.currentTime;
+      const voices = voicesRef.current;
+      const p = paramsRef.current;
+      const interval = 1 / p.density; // seconds between grains
 
-    voice.timerId = setTimeout(() => {
-      scheduleNextGrain(voiceGain, playbackRate, voice);
-    }, intervalMs);
-  };
+      for (const voice of voices.values()) {
+        // If next grain is due within the lookahead window
+        while (voice.nextGrainTime < now + lookahead) {
+          // Calculate pitch-based playback rate
+          const freq = midiToFreq(voice.note);
+          const playbackRate = freq / BASE_FREQ;
+
+          // Schedule grain
+          spawnGrain(voice.voiceGain, playbackRate, voice.nextGrainTime);
+
+          // Advance time
+          voice.nextGrainTime += interval;
+        }
+      }
+      schedulerRef.current = requestAnimationFrame(schedule);
+    };
+
+    schedulerRef.current = requestAnimationFrame(schedule);
+
+    return () => {
+      cancelAnimationFrame(schedulerRef.current);
+    };
+  }, [ctx]); // Re-run if ctx changes, but rely on refs for params/voices
 
   const startVoice = (note: number, velocity: number) => {
     if (!ctx || !outputRef.current || !sourceBufferRef.current) return;
@@ -198,8 +223,6 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
     }
 
     const p = paramsRef.current;
-    const freq = midiToFreq(note);
-    const playbackRate = freq / BASE_FREQ;
     const velGain = velocityToGain(velocity);
 
     const voiceGain = ctx.createGain();
@@ -220,14 +243,15 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
 
     const voice: GranularVoice = {
       voiceGain,
-      timerId: 0,
+      nextGrainTime: now,
       note,
     };
 
     voicesRef.current.set(note, voice);
     setActiveNotes(new Set(voicesRef.current.keys()));
 
-    scheduleNextGrain(voiceGain, playbackRate, voice);
+    // No direct scheduling call needed; the loop handles it
+
   };
 
   const stopVoice = (note: number) => {
@@ -235,10 +259,7 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
     const voice = voicesRef.current.get(note);
     if (!voice) return;
 
-    if (voice.timerId !== null) {
-      clearTimeout(voice.timerId);
-      voice.timerId = null;
-    }
+    // No timer to clear, the loop will just stop picking it up once removed from map
 
     const p = paramsRef.current;
     const now = ctx.currentTime;
@@ -264,9 +285,7 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus) {
   const killVoice = (note: number) => {
     const voice = voicesRef.current.get(note);
     if (!voice) return;
-    if (voice.timerId !== null) {
-      clearTimeout(voice.timerId);
-    }
+    // Removed timer logic
     voice.voiceGain.disconnect();
     voicesRef.current.delete(note);
   };

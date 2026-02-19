@@ -79,6 +79,9 @@ export class GeometricOrbits implements VisualizerScene {
   private lastNotes = new Set<number>();
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
+    this.resetOrbits();
+    this.lastNotes.clear();
+
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       alpha: true,
@@ -113,10 +116,10 @@ export class GeometricOrbits implements VisualizerScene {
     const intensity = resolved.intensity ?? 0.5;
 
     // Diff active notes vs tracked meshes
-    const currentNotes = new Set(state.activeNotes.keys());
+    const currentNotes = state.activeNotes;
 
     // Spawn new meshes for new notes
-    for (const note of currentNotes) {
+    for (const note of currentNotes.keys()) {
       if (!this.meshes.has(note)) {
         this.spawnMesh(
           note,
@@ -132,7 +135,10 @@ export class GeometricOrbits implements VisualizerScene {
         this.releaseMesh(note);
       }
     }
-    this.lastNotes = currentNotes;
+    this.lastNotes.clear();
+    for (const k of currentNotes.keys()) {
+      this.lastNotes.add(k);
+    }
 
     // Animate orbits
     for (const [, orb] of this.meshes) {
@@ -168,12 +174,8 @@ export class GeometricOrbits implements VisualizerScene {
   }
 
   dispose() {
-    for (const [, orb] of this.meshes) {
-      orb.tween?.kill();
-      orb.mesh.geometry.dispose();
-      (orb.mesh.material as THREE.Material).dispose();
-    }
-    this.meshes.clear();
+    this.resetOrbits();
+    this.lastNotes.clear();
     this.renderer?.dispose();
     this.renderer = null;
   }
@@ -246,5 +248,15 @@ export class GeometricOrbits implements VisualizerScene {
       },
     });
     orb.tween = releaseTween;
+  }
+
+  private resetOrbits() {
+    for (const [, orb] of this.meshes) {
+      orb.tween?.kill();
+      this.orbitGroup.remove(orb.mesh);
+      orb.mesh.geometry.dispose();
+      (orb.mesh.material as THREE.Material).dispose();
+    }
+    this.meshes.clear();
   }
 }

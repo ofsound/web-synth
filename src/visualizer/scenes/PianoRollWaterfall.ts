@@ -59,8 +59,10 @@ export class PianoRollWaterfall implements VisualizerScene {
     this.ctx2d = canvas.getContext("2d")!;
     this.w = width;
     this.h = height;
+    for (const bar of this.bars) gsap.killTweensOf(bar);
     this.bars = [];
     this.heldBars.clear();
+    this.lastNotes.clear();
   }
 
   update(
@@ -127,9 +129,10 @@ export class PianoRollWaterfall implements VisualizerScene {
     }
 
     // Remove off-screen bars
-    this.bars = this.bars.filter(
-      (b) => b.y < this.h + 20 && this.bars.length < BAR_MAX_HISTORY,
-    );
+    this.bars = this.bars.filter((b) => b.y < this.h + 20);
+    if (this.bars.length > BAR_MAX_HISTORY) {
+      this.bars.splice(0, this.bars.length - BAR_MAX_HISTORY);
+    }
 
     // ── Draw ──
     c.clearRect(0, 0, this.w, this.h);
@@ -188,6 +191,7 @@ export class PianoRollWaterfall implements VisualizerScene {
     }
     this.bars = [];
     this.heldBars.clear();
+    this.lastNotes.clear();
     this.ctx2d = null;
   }
 }
