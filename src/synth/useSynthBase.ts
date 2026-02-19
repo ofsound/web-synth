@@ -1,11 +1,8 @@
 /**
  * Base hook for polyphonic VoiceManager-based synthesizers.
  *
- * Provides shared infrastructure:
- * - Output gain node creation and management
- * - Active notes state tracking
- * - MIDI bus subscription
- * - VoiceManager lifecycle
+ * Built on `useSynthIO` for shared plumbing (params, output node, MIDI).
+ * Adds `VoiceManager` lifecycle on top.
  *
  * Derived hooks provide voice-specific callbacks:
  * - createVoice(note, velocity, time): V
@@ -37,15 +34,12 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
 } from "react";
 import { VoiceManager } from "./VoiceManager";
-import type { MidiBus } from "../midi/MidiBus";
+import type { MidiBus, MidiEvent } from "../midi/MidiBus";
+import { useSynthIO, type BaseSynthParams } from "./useSynthIO";
 
-export interface BaseSynthParams {
-  gain: number;
-  enabled: boolean;
-}
+export type { BaseSynthParams } from "./useSynthIO";
 
 export interface VoiceManagerCallbacks<V> {
   createVoice: (note: number, velocity: number, time: number) => V;
@@ -67,7 +61,6 @@ export interface UseSynthBaseOptions<P extends BaseSynthParams, V> {
 
 export interface SynthBaseResult<P> {
   outputNode: GainNode | null;
-  activeNotes: Set<number>;
   params: P;
   setParams: React.Dispatch<React.SetStateAction<P>>;
 }
@@ -77,41 +70,36 @@ export function useSynthBase<P extends BaseSynthParams, V>(
 ): SynthBaseResult<P> {
   const { ctx, midiBus, defaultParams, maxVoices = 16, callbacks } = options;
 
-  const [params, setParams] = useState<P>(() => ({ ...defaultParams }));
-  const paramsRef = useRef(params);
-  useEffect(() => {
-    paramsRef.current = params;
-  }, [params]);
-
-  const getParams = useCallback(() => paramsRef.current, []);
-
-  const outputRef = useRef<GainNode | null>(null);
-  const [outputNode, setOutputNode] = useState<GainNode | null>(null);
   const vmRef = useRef<VoiceManager<V> | null>(null);
   const callbacksRef = useRef(callbacks);
-  const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set());
 
   useLayoutEffect(() => {
     callbacksRef.current = callbacks;
   }, [callbacks]);
 
-  useEffect(() => {
-    if (!ctx) return;
-    const out = ctx.createGain();
-    out.gain.value = paramsRef.current.gain;
-    outputRef.current = out;
-    queueMicrotask(() => setOutputNode(out));
-    return () => {
-      out.disconnect();
-    };
-  }, [ctx]);
-
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.gain.value = params.gain;
+  // MIDI handler — forwarded to VoiceManager
+  const handleMidi = useCallback((e: MidiEvent, audioCtx: AudioContext) => {
+    const vm = vmRef.current;
+    if (!vm) return;
+    const time = audioCtx.currentTime;
+    if (e.type === "noteon" && e.velocity > 0) {
+      vm.noteOn(e.note, e.velocity, time);
+    } else if (
+      e.type === "noteoff" ||
+      (e.type === "noteon" && e.velocity === 0)
+    ) {
+      vm.noteOff(e.note, time);
     }
-  }, [params.gain]);
+  }, []);
 
+  const { outputNode, outputRef, params, setParams, getParams } = useSynthIO(
+    ctx,
+    midiBus,
+    defaultParams,
+    handleMidi,
+  );
+
+  // VoiceManager lifecycle
   useEffect(() => {
     if (!ctx || !outputRef.current) return;
     const output = outputRef.current;
@@ -129,32 +117,9 @@ export function useSynthBase<P extends BaseSynthParams, V>(
     return () => {
       vm.allNotesOff();
     };
-  }, [ctx, getParams, maxVoices]);
+  }, [ctx, getParams, maxVoices, outputRef]);
 
-  useEffect(() => {
-    if (!ctx || !vmRef.current) return;
-
-    const unsub = midiBus.subscribe((e) => {
-      if (!paramsRef.current.enabled) return;
-      const vm = vmRef.current!;
-      const time = ctx.currentTime;
-
-      if (e.type === "noteon" && e.velocity > 0) {
-        vm.noteOn(e.note, e.velocity, time);
-        setActiveNotes(new Set(vm.activeNotes));
-      } else if (
-        e.type === "noteoff" ||
-        (e.type === "noteon" && e.velocity === 0)
-      ) {
-        vm.noteOff(e.note, time);
-        setActiveNotes(new Set(vm.activeNotes));
-      }
-    });
-
-    return unsub;
-  }, [ctx, midiBus]);
-
-  return { outputNode, activeNotes, params, setParams };
+  return { outputNode, params, setParams };
 }
 
 /**

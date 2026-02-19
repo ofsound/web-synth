@@ -35,7 +35,10 @@ function EffectCardShell({
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={onToggle}
+            aria-label={enabled ? `Bypass ${label}` : `Enable ${label}`}
+            aria-pressed={enabled}
             className={`h-2.5 w-2.5 rounded-full ${enabled ? "bg-accent" : "bg-text-muted/30"}`}
             title={
               enabled
@@ -47,13 +50,17 @@ function EffectCardShell({
         </div>
         <div className="flex gap-1">
           <button
+            type="button"
             onClick={onMoveUp}
+            aria-label={`Move ${label} up`}
             className="border-border text-text-muted hover:text-text rounded border px-1 py-0.5 text-[10px]"
           >
             ▲
           </button>
           <button
+            type="button"
             onClick={onMoveDown}
+            aria-label={`Move ${label} down`}
             className="border-border text-text-muted hover:text-text rounded border px-1 py-0.5 text-[10px]"
           >
             ▼

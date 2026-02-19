@@ -11,10 +11,13 @@ import * as THREE from "three";
 import type { VisualizerScene } from "./types";
 import type { MidiState } from "../useMidiState";
 import type { MidiMapping, ResolvedParams } from "../MidiMapper";
+import {
+  MAX_PARTICLES,
+  PARTICLE_BURST_SIZE,
+  PARTICLE_LIFETIME,
+} from "../../constants";
 
-const MAX_PARTICLES = 3000;
-const BURST_SIZE = 40;
-const PARTICLE_LIFETIME = 3;
+const BURST_SIZE = PARTICLE_BURST_SIZE;
 
 export class ParticleStorm implements VisualizerScene {
   readonly id = "particle-storm";
@@ -120,17 +123,17 @@ export class ParticleStorm implements VisualizerScene {
     const intensity = resolved.intensity ?? 0.5;
 
     if (
-      state.lastEvent?.type === "noteon" &&
-      state.lastEvent.velocity > 0 &&
-      state.lastEventId !== lastProcessedEventIdRef.current
+      state.lastNoteOnEvent?.type === "noteon" &&
+      state.lastNoteOnEvent.velocity > 0 &&
+      state.lastNoteOnId !== lastProcessedEventIdRef.current
     ) {
-      lastProcessedEventIdRef.current = state.lastEventId;
+      lastProcessedEventIdRef.current = state.lastNoteOnId;
       this.spawnBurst(
         hue,
         sizeScale,
         speed,
         spread,
-        state.lastEvent.velocity / 127,
+        state.lastNoteOnEvent.velocity / 127,
       );
     }
 

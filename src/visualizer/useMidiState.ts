@@ -67,6 +67,8 @@ export interface MidiState {
   centroid: number;
   lastEvent: MidiEvent | null;
   lastEventId: number;
+  lastNoteOnEvent: MidiEvent | null;
+  lastNoteOnId: number;
   ccValues: Map<number, number>;
   recentOnsets: number[];
 }
@@ -76,6 +78,7 @@ export interface MidiState {
 /* ------------------------------------------------------------------ */
 
 let globalEventId = 0;
+const VISUAL_NOTE_HOLD_MS = 34;
 
 function createInitialState(): MidiState {
   return {
@@ -86,6 +89,8 @@ function createInitialState(): MidiState {
     centroid: 60,
     lastEvent: null,
     lastEventId: -1,
+    lastNoteOnEvent: null,
+    lastNoteOnId: -1,
     ccValues: new Map(),
     recentOnsets: [],
   };
@@ -113,6 +118,29 @@ export function useMidiState(midiBus: MidiBus) {
 
   useEffect(() => {
     const s = ref.current;
+    const noteOffTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+    const clearNoteOffTimer = (note: number) => {
+      const timer = noteOffTimers.get(note);
+      if (timer) {
+        clearTimeout(timer);
+        noteOffTimers.delete(note);
+      }
+    };
+
+    const finalizeNoteOff = (note: number, releaseNow: number) => {
+      const active = s.activeNotes.get(note);
+      if (!active) return;
+      for (const rec of s.noteHistory) {
+        if (rec.note === note && !rec.released) {
+          rec.released = true;
+          rec.duration = releaseNow - rec.time;
+          break;
+        }
+      }
+      s.activeNotes.delete(note);
+      recalcDerived(s, releaseNow);
+    };
 
     const unsub = midiBus.subscribe((e) => {
       const now = performance.now();
@@ -120,11 +148,14 @@ export function useMidiState(midiBus: MidiBus) {
       s.lastEventId = ++globalEventId;
 
       if (e.type === "noteon" && e.velocity > 0) {
+        clearNoteOffTimer(e.note);
         s.activeNotes.set(e.note, {
           velocity: e.velocity,
           startTime: now,
           channel: e.channel,
         });
+        s.lastNoteOnEvent = e;
+        s.lastNoteOnId = s.lastEventId;
         s.noteHistory.push({
           note: e.note,
           velocity: e.velocity,
@@ -139,14 +170,17 @@ export function useMidiState(midiBus: MidiBus) {
       ) {
         const active = s.activeNotes.get(e.note);
         if (active) {
-          for (const rec of s.noteHistory) {
-            if (rec.note === e.note && !rec.released) {
-              rec.released = true;
-              rec.duration = now - rec.time;
-              break;
-            }
+          const aliveFor = now - active.startTime;
+          if (aliveFor < VISUAL_NOTE_HOLD_MS) {
+            clearNoteOffTimer(e.note);
+            const timer = setTimeout(() => {
+              finalizeNoteOff(e.note, performance.now());
+              noteOffTimers.delete(e.note);
+            }, VISUAL_NOTE_HOLD_MS - aliveFor);
+            noteOffTimers.set(e.note, timer);
+          } else {
+            finalizeNoteOff(e.note, now);
           }
-          s.activeNotes.delete(e.note);
         }
       } else if (e.type === "cc") {
         s.ccValues.set(e.cc, e.value);
@@ -155,7 +189,11 @@ export function useMidiState(midiBus: MidiBus) {
       recalcDerived(s, now);
     });
 
-    return unsub;
+    return () => {
+      unsub();
+      noteOffTimers.forEach((timer) => clearTimeout(timer));
+      noteOffTimers.clear();
+    };
   }, [midiBus]);
 
   return ref;

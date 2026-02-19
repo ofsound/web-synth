@@ -74,11 +74,15 @@ export class GridPulseMatrix implements VisualizerScene {
   private h = 0;
   private cells: CellState[][] = []; // [row][col]
   private lastNotes = new Set<number>();
+  private canvas: HTMLCanvasElement | null = null;
+  private contextLost = false;
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
+    this.canvas = canvas;
     this.ctx2d = canvas.getContext("2d");
     this.w = width;
     this.h = height;
+    this.contextLost = false;
     if (!this.ctx2d) return;
 
     // Initialise cell state
@@ -90,7 +94,24 @@ export class GridPulseMatrix implements VisualizerScene {
       }
     }
     this.lastNotes.clear();
+
+    // Handle context loss/restoration for Canvas2D
+    canvas.addEventListener("contextlost", this.handleContextLost);
+    canvas.addEventListener("contextrestored", this.handleContextRestored);
   }
+
+  private handleContextLost = (e: Event) => {
+    e.preventDefault();
+    this.contextLost = true;
+    this.ctx2d = null;
+  };
+
+  private handleContextRestored = () => {
+    this.contextLost = false;
+    if (this.canvas) {
+      this.ctx2d = this.canvas.getContext("2d");
+    }
+  };
 
   update(
     resolved: ResolvedParams,
@@ -98,6 +119,7 @@ export class GridPulseMatrix implements VisualizerScene {
     dt: number,
     lastProcessedEventIdRef: RefObject<number>,
   ) {
+    if (this.contextLost) return;
     void lastProcessedEventIdRef;
     void dt;
     if (!this.ctx2d) return;
@@ -182,8 +204,24 @@ export class GridPulseMatrix implements VisualizerScene {
   }
 
   dispose() {
+    // Kill all GSAP tweens targeting cell objects to prevent leaks
+    for (const row of this.cells) {
+      for (const cell of row) {
+        gsap.killTweensOf(cell);
+      }
+    }
     this.cells = [];
     this.ctx2d = null;
+
+    // Remove event listeners
+    if (this.canvas) {
+      this.canvas.removeEventListener("contextlost", this.handleContextLost);
+      this.canvas.removeEventListener(
+        "contextrestored",
+        this.handleContextRestored,
+      );
+      this.canvas = null;
+    }
   }
 
   /* ---- internal ---- */

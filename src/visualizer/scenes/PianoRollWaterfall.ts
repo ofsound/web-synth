@@ -54,8 +54,11 @@ export class PianoRollWaterfall implements VisualizerScene {
   private bars: Bar[] = [];
   private heldBars = new Map<number, Bar>(); // note → bar currently being held
   private lastNotes = new Set<number>();
+  private canvas: HTMLCanvasElement | null = null;
+  private contextLost = false;
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
+    this.canvas = canvas;
     this.ctx2d = canvas.getContext("2d");
     this.w = width;
     this.h = height;
@@ -64,7 +67,25 @@ export class PianoRollWaterfall implements VisualizerScene {
     this.bars = [];
     this.heldBars.clear();
     this.lastNotes.clear();
+    this.contextLost = false;
+
+    // Handle context loss/restoration for Canvas2D
+    canvas.addEventListener("contextlost", this.handleContextLost);
+    canvas.addEventListener("contextrestored", this.handleContextRestored);
   }
+
+  private handleContextLost = (e: Event) => {
+    e.preventDefault();
+    this.contextLost = true;
+    this.ctx2d = null;
+  };
+
+  private handleContextRestored = () => {
+    this.contextLost = false;
+    if (this.canvas) {
+      this.ctx2d = this.canvas.getContext("2d");
+    }
+  };
 
   update(
     resolved: ResolvedParams,
@@ -73,7 +94,7 @@ export class PianoRollWaterfall implements VisualizerScene {
     lastProcessedEventIdRef: RefObject<number>,
   ) {
     void lastProcessedEventIdRef;
-    if (!this.ctx2d) return;
+    if (!this.ctx2d || this.contextLost) return;
     const c = this.ctx2d;
     const speedMul = resolved.speed ?? 1;
     const sizeScale = resolved.size ?? 1;
@@ -194,5 +215,15 @@ export class PianoRollWaterfall implements VisualizerScene {
     this.heldBars.clear();
     this.lastNotes.clear();
     this.ctx2d = null;
+
+    // Remove event listeners
+    if (this.canvas) {
+      this.canvas.removeEventListener("contextlost", this.handleContextLost);
+      this.canvas.removeEventListener(
+        "contextrestored",
+        this.handleContextRestored,
+      );
+      this.canvas = null;
+    }
   }
 }

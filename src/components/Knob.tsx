@@ -8,6 +8,42 @@ interface KnobProps {
   onChange: (v: number) => void;
   size?: number;
   unit?: string;
+  /** Use logarithmic scaling — ideal for frequency-domain parameters. */
+  scale?: "linear" | "log";
+}
+
+/**
+ * Map a normalised 0-1 value to the parameter range using the chosen scale.
+ */
+function normToValue(
+  norm: number,
+  min: number,
+  max: number,
+  scale: "linear" | "log",
+): number {
+  if (scale === "log") {
+    // Logarithmic mapping: useful for frequency knobs (20–15 000 Hz)
+    const safeMin = Math.max(min, 1e-6);
+    return safeMin * Math.pow(max / safeMin, norm);
+  }
+  return min + norm * (max - min);
+}
+
+/**
+ * Map a parameter value back to normalised 0-1.
+ */
+function valueToNorm(
+  val: number,
+  min: number,
+  max: number,
+  scale: "linear" | "log",
+): number {
+  if (scale === "log") {
+    const safeMin = Math.max(min, 1e-6);
+    const clamped = Math.max(val, safeMin);
+    return Math.log(clamped / safeMin) / Math.log(max / safeMin);
+  }
+  return (val - min) / (max - min);
 }
 
 export function Knob({
@@ -18,18 +54,19 @@ export function Knob({
   onChange,
   size = 56,
   unit = "",
+  scale = "linear",
 }: KnobProps) {
   const knobRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const startYRef = useRef(0);
-  const startValRef = useRef(0);
+  const startNormRef = useRef(0);
 
   const clampValue = useCallback(
     (next: number) => Math.min(max, Math.max(min, next)),
     [min, max],
   );
 
-  const pct = (value - min) / (max - min);
+  const pct = valueToNorm(value, min, max, scale);
   const angle = -135 + pct * 270; /* -135° to +135° */
 
   const handlePointerDown = useCallback(
@@ -37,22 +74,23 @@ export function Knob({
       e.preventDefault();
       setDragging(true);
       startYRef.current = e.clientY;
-      startValRef.current = value;
+      startNormRef.current = valueToNorm(value, min, max, scale);
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [value],
+    [value, min, max, scale],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (!dragging) return;
       const dy = startYRef.current - e.clientY;
-      const range = max - min;
-      const sensitivity = range / 150;
-      const newVal = clampValue(startValRef.current + dy * sensitivity);
+      // Sensitivity in normalised space: 150 px = full range
+      const normDelta = dy / 150;
+      const newNorm = Math.min(1, Math.max(0, startNormRef.current + normDelta));
+      const newVal = clampValue(normToValue(newNorm, min, max, scale));
       onChange(newVal);
     },
-    [dragging, clampValue, max, min, onChange],
+    [dragging, clampValue, max, min, onChange, scale],
   );
 
   const handlePointerUp = useCallback(() => {
@@ -61,21 +99,22 @@ export function Knob({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const fineStep = (max - min) / 100;
-      const coarseStep = (max - min) / 20;
+      const fineNorm = 1 / 100;
+      const coarseNorm = 1 / 20;
+      const currentNorm = valueToNorm(value, min, max, scale);
 
       if (e.key === "ArrowUp" || e.key === "ArrowRight") {
         e.preventDefault();
-        onChange(clampValue(value + fineStep));
+        onChange(clampValue(normToValue(Math.min(1, currentNorm + fineNorm), min, max, scale)));
       } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
         e.preventDefault();
-        onChange(clampValue(value - fineStep));
+        onChange(clampValue(normToValue(Math.max(0, currentNorm - fineNorm), min, max, scale)));
       } else if (e.key === "PageUp") {
         e.preventDefault();
-        onChange(clampValue(value + coarseStep));
+        onChange(clampValue(normToValue(Math.min(1, currentNorm + coarseNorm), min, max, scale)));
       } else if (e.key === "PageDown") {
         e.preventDefault();
-        onChange(clampValue(value - coarseStep));
+        onChange(clampValue(normToValue(Math.max(0, currentNorm - coarseNorm), min, max, scale)));
       } else if (e.key === "Home") {
         e.preventDefault();
         onChange(min);
@@ -84,7 +123,7 @@ export function Knob({
         onChange(max);
       }
     },
-    [clampValue, max, min, onChange, value],
+    [clampValue, max, min, onChange, value, scale],
   );
 
   useEffect(() => {

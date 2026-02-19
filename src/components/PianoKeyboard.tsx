@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useRef } from "react";
 import { isBlackKey, midiToNoteName } from "../utils/midiUtils";
 
 interface PianoKeyboardProps {
@@ -9,13 +9,17 @@ interface PianoKeyboardProps {
   activeNotes?: Set<number>;
 }
 
-export function PianoKeyboard({
+export const PianoKeyboard = memo(function PianoKeyboard({
   startNote = 48 /* C3 */,
   endNote = 72 /* C5 */,
   onNoteOn,
   onNoteOff,
   activeNotes = new Set(),
 }: PianoKeyboardProps) {
+  // Track which notes were actually pressed by pointer so we don't
+  // emit phantom noteOff on mere hover-leave.
+  const pressedByPointer = useRef(new Set<number>());
+
   const notes = useMemo(() => {
     const arr: number[] = [];
     for (let n = startNote; n <= endNote; n++) arr.push(n);
@@ -41,18 +45,44 @@ export function PianoKeyboard({
     [whiteNotes, whiteKeyWidth],
   );
 
+  const handlePointerDown = useCallback(
+    (note: number, e: React.PointerEvent) => {
+      e.preventDefault();
+      pressedByPointer.current.add(note);
+      onNoteOn(note);
+    },
+    [onNoteOn],
+  );
+
+  const handlePointerUp = useCallback(
+    (note: number) => {
+      if (pressedByPointer.current.has(note)) {
+        pressedByPointer.current.delete(note);
+        onNoteOff(note);
+      }
+    },
+    [onNoteOff],
+  );
+
+  const handlePointerLeave = useCallback(
+    (note: number) => {
+      if (pressedByPointer.current.has(note)) {
+        pressedByPointer.current.delete(note);
+        onNoteOff(note);
+      }
+    },
+    [onNoteOff],
+  );
+
   return (
     <div className="border-border bg-surface relative h-32 w-full overflow-hidden rounded border select-none">
       {/* White keys */}
       {whiteNotes.map((note, i) => (
         <button
           key={note}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            onNoteOn(note);
-          }}
-          onPointerUp={() => onNoteOff(note)}
-          onPointerLeave={() => onNoteOff(note)}
+          onPointerDown={(e) => handlePointerDown(note, e)}
+          onPointerUp={() => handlePointerUp(note)}
+          onPointerLeave={() => handlePointerLeave(note)}
           className={`border-border absolute top-0 bottom-0 border-r transition-colors ${
             activeNotes.has(note)
               ? "bg-accent/40"
@@ -78,12 +108,9 @@ export function PianoKeyboard({
         return (
           <button
             key={note}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              onNoteOn(note);
-            }}
-            onPointerUp={() => onNoteOff(note)}
-            onPointerLeave={() => onNoteOff(note)}
+            onPointerDown={(e) => handlePointerDown(note, e)}
+            onPointerUp={() => handlePointerUp(note)}
+            onPointerLeave={() => handlePointerLeave(note)}
             className={`absolute top-0 z-10 h-[60%] rounded-b transition-colors ${
               activeNotes.has(note)
                 ? "bg-accent"
@@ -99,4 +126,4 @@ export function PianoKeyboard({
       })}
     </div>
   );
-}
+});

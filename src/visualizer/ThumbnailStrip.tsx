@@ -2,10 +2,10 @@
  * ThumbnailStrip — horizontal row of scene selector thumbnails.
  */
 
-import type { VisualizerScene } from "./scenes/types";
+import type { SceneMeta } from "./scenes";
 
 interface Props {
-  scenes: VisualizerScene[];
+  scenes: SceneMeta[];
   activeIdx: number;
   onSelect: (idx: number) => void;
 }

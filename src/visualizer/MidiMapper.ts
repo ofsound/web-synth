@@ -69,14 +69,20 @@ function readSource(source: MidiSource, state: MidiState, ccNumber?: number): nu
             // weighted by most recent active note, fallback to centroid
             if (state.activeNotes.size === 0) return state.centroid / 127;
             // use the last noteOn's note for instant reactivity
-            if (state.lastEvent?.type === "noteon" && state.lastEvent.velocity > 0) {
-                return state.lastEvent.note / 127;
+            if (
+                state.lastNoteOnEvent?.type === "noteon" &&
+                state.lastNoteOnEvent.velocity > 0
+            ) {
+                return state.lastNoteOnEvent.note / 127;
             }
             return state.centroid / 127;
         }
         case "velocity": {
-            if (state.lastEvent?.type === "noteon" && state.lastEvent.velocity > 0) {
-                return state.lastEvent.velocity / 127;
+            if (
+                state.lastNoteOnEvent?.type === "noteon" &&
+                state.lastNoteOnEvent.velocity > 0
+            ) {
+                return state.lastNoteOnEvent.velocity / 127;
             }
             // average velocity of active notes
             if (state.activeNotes.size === 0) return 0;
@@ -97,7 +103,8 @@ function readSource(source: MidiSource, state: MidiState, ccNumber?: number): nu
             return 0;
         case "noteOn":
             // 1 for the single frame of a noteOn, 0 otherwise — acts as a trigger
-            return state.lastEvent?.type === "noteon" && state.lastEvent.velocity > 0
+            return state.lastNoteOnEvent?.type === "noteon" &&
+                state.lastNoteOnEvent.velocity > 0
                 ? 1
                 : 0;
         case "noteOff":

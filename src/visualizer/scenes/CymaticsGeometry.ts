@@ -62,6 +62,8 @@ export class CymaticsGeometry implements VisualizerScene {
   private h = 0;
   private time = 0;
   private prevNoteKey = "";
+  private canvas: HTMLCanvasElement | null = null;
+  private contextLost = false;
 
   // Animated state tweened by GSAP
   private curve: CurveState = {
@@ -77,10 +79,12 @@ export class CymaticsGeometry implements VisualizerScene {
   };
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
+    this.canvas = canvas;
     this.ctx2d = canvas.getContext("2d");
     this.w = width;
     this.h = height;
     this.time = 0;
+    this.contextLost = false;
 
     if (!this.ctx2d) return;
 
@@ -88,7 +92,24 @@ export class CymaticsGeometry implements VisualizerScene {
     const c = this.ctx2d;
     c.fillStyle = "#0f0f0f";
     c.fillRect(0, 0, this.w, this.h);
+
+    // Handle context loss/restoration for Canvas2D
+    canvas.addEventListener("contextlost", this.handleContextLost);
+    canvas.addEventListener("contextrestored", this.handleContextRestored);
   }
+
+  private handleContextLost = (e: Event) => {
+    e.preventDefault();
+    this.contextLost = true;
+    this.ctx2d = null;
+  };
+
+  private handleContextRestored = () => {
+    this.contextLost = false;
+    if (this.canvas) {
+      this.ctx2d = this.canvas.getContext("2d");
+    }
+  };
 
   update(
     resolved: ResolvedParams,
@@ -97,7 +118,7 @@ export class CymaticsGeometry implements VisualizerScene {
     lastProcessedEventIdRef: RefObject<number>,
   ) {
     void lastProcessedEventIdRef;
-    if (!this.ctx2d) return;
+    if (!this.ctx2d || this.contextLost) return;
     const c = this.ctx2d;
     const speedMul = resolved.speed ?? 1;
     const brightness = resolved.brightness ?? 0.6;
@@ -191,6 +212,16 @@ export class CymaticsGeometry implements VisualizerScene {
 
   dispose() {
     this.ctx2d = null;
+
+    // Remove event listeners
+    if (this.canvas) {
+      this.canvas.removeEventListener("contextlost", this.handleContextLost);
+      this.canvas.removeEventListener(
+        "contextrestored",
+        this.handleContextRestored,
+      );
+      this.canvas = null;
+    }
   }
 
   /* ---- internal ---- */

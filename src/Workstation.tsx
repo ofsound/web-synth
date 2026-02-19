@@ -8,7 +8,15 @@
  * Decomposed into section sub-components to isolate re-renders.
  */
 
-import { Suspense, lazy, memo, useEffect, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useAudioContext } from "./hooks/useAudioContext";
 import { useMidiBus } from "./midi/useMidiBus";
 
@@ -16,6 +24,7 @@ import { useMidiBus } from "./midi/useMidiBus";
 import { useWebMidiInput } from "./midi/WebMidiInput";
 import { KeyboardInput } from "./midi/KeyboardInput";
 import { PolySequencer } from "./midi/PolySequencer";
+import { MidiFilePlayer } from "./midi/MidiFilePlayer";
 
 // Synth engines
 import { useFMSynth } from "./synth/useFMSynth";
@@ -53,10 +62,8 @@ import type { MidiBus } from "./midi/MidiBus";
 import type { FMSynthParams } from "./synth/useFMSynth";
 import type { SubtractiveSynthParams } from "./synth/useSubtractiveSynth";
 import type { GranularSynthParams } from "./synth/useGranularSynth";
-import type { DelayParams } from "./effects/useDelay";
-import type { PhaserParams } from "./effects/usePhaser";
-import type { BitcrusherParams } from "./effects/useBitcrusher";
 import type { EffectSlot, RoutingMode } from "./effects/useEffectRack";
+import type { MidiChannelMode } from "./midi/channelPolicy";
 
 /* ── Memoized Section Components ── */
 
@@ -65,11 +72,21 @@ const MidiInputSection = memo(function MidiInputSection({
   midiSupported,
   midiInputs,
   ctx,
+  keyboardChannelMode,
+  sequencerChannelMode,
+  midiFileChannelMode,
+  onSequencerTransportRegister,
+  onMidiFileTransportRegister,
 }: {
   midiBus: MidiBus;
   midiSupported: boolean;
   midiInputs: string[];
   ctx: AudioContext | null;
+  keyboardChannelMode: MidiChannelMode;
+  sequencerChannelMode: MidiChannelMode;
+  midiFileChannelMode: MidiChannelMode;
+  onSequencerTransportRegister: (stop: (() => void) | null) => void;
+  onMidiFileTransportRegister: (stop: (() => void) | null) => void;
 }) {
   return (
     <section>
@@ -96,7 +113,25 @@ const MidiInputSection = memo(function MidiInputSection({
 
       {/* Piano Keyboard */}
       <div className="mb-3">
-        <KeyboardInput midiBus={midiBus} startNote={36} endNote={84} />
+        <KeyboardInput
+          midiBus={midiBus}
+          startNote={36}
+          endNote={84}
+          channelMode={keyboardChannelMode}
+        />
+      </div>
+
+      {/* MIDI File Player */}
+      <div className="border-border rounded-lg border p-3">
+        <h3 className="text-text-muted mb-2 text-xs font-semibold tracking-wider uppercase">
+          MIDI File Player
+        </h3>
+        <MidiFilePlayer
+          midiBus={midiBus}
+          ctx={ctx}
+          channelMode={midiFileChannelMode}
+          onTransportStopRegister={onMidiFileTransportRegister}
+        />
       </div>
 
       {/* Poly Sequencer */}
@@ -104,7 +139,12 @@ const MidiInputSection = memo(function MidiInputSection({
         <h3 className="text-text-muted mb-2 text-xs font-semibold tracking-wider uppercase">
           Polyphonic Sequencer
         </h3>
-        <PolySequencer midiBus={midiBus} ctx={ctx} />
+        <PolySequencer
+          midiBus={midiBus}
+          ctx={ctx}
+          channelMode={sequencerChannelMode}
+          onTransportStopRegister={onSequencerTransportRegister}
+        />
       </div>
     </section>
   );
@@ -143,26 +183,14 @@ const EffectsRackSection = memo(function EffectsRackSection({
   slots,
   routingMode,
   setRoutingMode,
-  toggleEffect,
-  moveEffect,
-  delayParams,
-  setDelayParams,
-  phaserParams,
-  setPhaserParams,
-  bitcrusherParams,
-  setBitcrusherParams,
+  renderCard,
 }: {
   slots: EffectSlot[];
   routingMode: RoutingMode;
   setRoutingMode: (mode: RoutingMode) => void;
-  toggleEffect: (id: string) => void;
-  moveEffect: (id: string, direction: "up" | "down") => void;
-  delayParams: DelayParams;
-  setDelayParams: React.Dispatch<React.SetStateAction<DelayParams>>;
-  phaserParams: PhaserParams;
-  setPhaserParams: React.Dispatch<React.SetStateAction<PhaserParams>>;
-  bitcrusherParams: BitcrusherParams;
-  setBitcrusherParams: React.Dispatch<React.SetStateAction<BitcrusherParams>>;
+  /** Render the card for a single effect slot. Defined at the registration
+   *  site in App so that adding a new effect only requires one change. */
+  renderCard: (slot: EffectSlot) => React.ReactNode;
 }) {
   return (
     <section>
@@ -192,48 +220,7 @@ const EffectsRackSection = memo(function EffectsRackSection({
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        {slots.map((slot) => {
-          if (slot.id === "delay") {
-            return (
-              <DelayCard
-                key={slot.id}
-                params={delayParams}
-                setParams={setDelayParams}
-                enabled={slot.enabled}
-                onToggle={() => toggleEffect(slot.id)}
-                onMoveUp={() => moveEffect(slot.id, "up")}
-                onMoveDown={() => moveEffect(slot.id, "down")}
-              />
-            );
-          }
-          if (slot.id === "phaser") {
-            return (
-              <PhaserCard
-                key={slot.id}
-                params={phaserParams}
-                setParams={setPhaserParams}
-                enabled={slot.enabled}
-                onToggle={() => toggleEffect(slot.id)}
-                onMoveUp={() => moveEffect(slot.id, "up")}
-                onMoveDown={() => moveEffect(slot.id, "down")}
-              />
-            );
-          }
-          if (slot.id === "bitcrusher") {
-            return (
-              <BitcrusherCard
-                key={slot.id}
-                params={bitcrusherParams}
-                setParams={setBitcrusherParams}
-                enabled={slot.enabled}
-                onToggle={() => toggleEffect(slot.id)}
-                onMoveUp={() => moveEffect(slot.id, "up")}
-                onMoveDown={() => moveEffect(slot.id, "down")}
-              />
-            );
-          }
-          return null;
-        })}
+        {slots.map((slot) => renderCard(slot))}
       </div>
     </section>
   );
@@ -283,6 +270,20 @@ export default function App() {
 
   // ── Mobile visualiser toggle ──
   const [showViz, setShowViz] = useState(false);
+  const midiFileTransportRef = useRef<(() => void) | null>(null);
+  const sequencerTransportRef = useRef<(() => void) | null>(null);
+
+  const keyboardChannelMode: MidiChannelMode = "normalized";
+  const sequencerChannelMode: MidiChannelMode = "normalized";
+  const midiFileChannelMode: MidiChannelMode = "source";
+
+  const registerMidiFileStop = useCallback((stop: (() => void) | null) => {
+    midiFileTransportRef.current = stop;
+  }, []);
+
+  const registerSequencerStop = useCallback((stop: (() => void) | null) => {
+    sequencerTransportRef.current = stop;
+  }, []);
 
   // ── Master output chain ──
   const { nodes: master, masterVolume, setMasterVolume } = useMasterOutput(ctx);
@@ -340,6 +341,59 @@ export default function App() {
     ]);
   }, [delay.io, phaser.io, bitcrusher.io, registerEffects]);
 
+  // Render-map for effect cards — add new effects here without touching
+  // EffectsRackSection. Each entry closes over its own params & setParams.
+  const renderEffectCard = useCallback(
+    (slot: EffectSlot): React.ReactNode => {
+      const common = {
+        enabled: slot.enabled,
+        onToggle: () => effectRack.toggleEffect(slot.id),
+        onMoveUp: () => effectRack.moveEffect(slot.id, "up"),
+        onMoveDown: () => effectRack.moveEffect(slot.id, "down"),
+      };
+      switch (slot.id) {
+        case "delay":
+          return (
+            <DelayCard
+              key={slot.id}
+              params={delay.params}
+              setParams={delay.setParams}
+              {...common}
+            />
+          );
+        case "phaser":
+          return (
+            <PhaserCard
+              key={slot.id}
+              params={phaser.params}
+              setParams={phaser.setParams}
+              {...common}
+            />
+          );
+        case "bitcrusher":
+          return (
+            <BitcrusherCard
+              key={slot.id}
+              params={bitcrusher.params}
+              setParams={bitcrusher.setParams}
+              {...common}
+            />
+          );
+        default:
+          return null;
+      }
+    },
+    [
+      effectRack,
+      delay.params,
+      delay.setParams,
+      phaser.params,
+      phaser.setParams,
+      bitcrusher.params,
+      bitcrusher.setParams,
+    ],
+  );
+
   return (
     <div className="bg-surface text-text flex h-screen flex-col overflow-hidden">
       {/* Header */}
@@ -363,12 +417,14 @@ export default function App() {
               type="button"
               onClick={async () => {
                 await resume();
+                midiFileTransportRef.current?.();
+                sequencerTransportRef.current?.();
                 midiBus.allNotesOff();
               }}
-              aria-label="Panic: send all notes off"
+              aria-label="Panic: stop transports and send all notes off"
               className="border-danger text-danger hover:bg-danger/10 rounded border px-3 py-1 text-xs"
             >
-              Panic (All Notes Off)
+              Panic (Stop + All Notes Off)
             </button>
           </div>
         </div>
@@ -386,6 +442,11 @@ export default function App() {
                 midiSupported={midiSupported}
                 midiInputs={midiInputs}
                 ctx={ctx}
+                keyboardChannelMode={keyboardChannelMode}
+                sequencerChannelMode={sequencerChannelMode}
+                midiFileChannelMode={midiFileChannelMode}
+                onSequencerTransportRegister={registerSequencerStop}
+                onMidiFileTransportRegister={registerMidiFileStop}
               />
             </ErrorBoundary>
 
@@ -407,14 +468,7 @@ export default function App() {
                 slots={effectRack.slots}
                 routingMode={effectRack.routingMode}
                 setRoutingMode={effectRack.setRoutingMode}
-                toggleEffect={effectRack.toggleEffect}
-                moveEffect={effectRack.moveEffect}
-                delayParams={delay.params}
-                setDelayParams={delay.setParams}
-                phaserParams={phaser.params}
-                setPhaserParams={phaser.setParams}
-                bitcrusherParams={bitcrusher.params}
-                setBitcrusherParams={bitcrusher.setParams}
+                renderCard={renderEffectCard}
               />
             </ErrorBoundary>
 

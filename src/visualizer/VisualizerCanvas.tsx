@@ -22,7 +22,7 @@ import { useMidiState } from "./useMidiState";
 import type { MidiState } from "./useMidiState";
 import { resolve } from "./MidiMapper";
 import type { MidiMapping } from "./MidiMapper";
-import { createScenes } from "./scenes";
+import { SCENE_METAS, createScene } from "./scenes";
 import type { VisualizerScene } from "./scenes/types";
 import { ThumbnailStrip } from "./ThumbnailStrip.tsx";
 import { MappingModal } from "./MappingModal.tsx";
@@ -32,7 +32,7 @@ function useVisualizerLoop(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   scene: VisualizerScene | null,
   midiStateRef: RefObject<MidiState>,
-  mappings: MidiMapping[],
+  mappingsRef: RefObject<MidiMapping[]>,
 ) {
   const rafRef = useRef(0);
   const prevTimeRef = useRef(0);
@@ -45,6 +45,7 @@ function useVisualizerLoop(
     if (!container || !canvas || !scene) return;
 
     loopStartedRef.current = false;
+    let isVisible = document.visibilityState === "visible";
 
     const startLoopIfReady = (deviceW: number, deviceH: number) => {
       if (deviceW <= 0 || deviceH <= 0 || loopStartedRef.current) return;
@@ -56,11 +57,18 @@ function useVisualizerLoop(
       prevTimeRef.current = performance.now();
 
       const loop = (now: number) => {
+        if (!isVisible) {
+          // Pause rendering when tab is hidden to save battery
+          rafRef.current = requestAnimationFrame(loop);
+          prevTimeRef.current = now;
+          return;
+        }
+
         const dt = Math.min((now - prevTimeRef.current) / 1000, 0.1);
         prevTimeRef.current = now;
 
         const state = midiStateRef.current;
-        const resolved = resolve(state, mappings);
+        const resolved = resolve(state, mappingsRef.current);
         scene.update(resolved, state, dt, lastProcessedEventIdRef);
 
         rafRef.current = requestAnimationFrame(loop);
@@ -86,14 +94,24 @@ function useVisualizerLoop(
       }
     });
 
+    const handleVisibilityChange = () => {
+      isVisible = document.visibilityState === "visible";
+      if (isVisible && loopStartedRef.current) {
+        // Reset prevTime to avoid large dt jump when resuming
+        prevTimeRef.current = performance.now();
+      }
+    };
+
     observer.observe(container);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       cancelAnimationFrame(rafRef.current);
       scene.dispose();
     };
-  }, [containerRef, canvasRef, scene, midiStateRef, mappings]);
+  }, [containerRef, canvasRef, scene, midiStateRef, mappingsRef]);
 }
 
 export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
@@ -102,26 +120,40 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const midiStateRef = useMidiState(midiBus);
 
-  const scenes = useMemo(() => createScenes(), []);
-
-  const defaultMappings = useMemo<Record<string, MidiMapping[]>>(() => {
-    const map: Record<string, MidiMapping[]> = {};
-    for (const scene of scenes) {
-      map[scene.id] = [...scene.defaultMappings];
-    }
-    return map;
-  }, [scenes]);
-
   const [activeIdx, setActiveIdx] = useState(0);
-  const activeScene = scenes[activeIdx] ?? null;
+
+  // One scene instance at a time — created fresh when the user switches scenes.
+  // The outgoing instance is disposed by useVisualizerLoop’s cleanup effect.
+  const [activeScene, setActiveScene] = useState<VisualizerScene | null>(() =>
+    createScene(0),
+  );
+  useEffect(() => {
+    setActiveScene(createScene(activeIdx));
+  }, [activeIdx]);
+
+  // Canvas ref tracks the active scene’s renderer type.
   const activeCanvasRef =
     activeScene?.type === "canvas2d" ? canvas2dRef : webglCanvasRef;
 
-  const [mappingsMap, setMappingsMap] =
-    useState<Record<string, MidiMapping[]>>(defaultMappings);
+  // Mappings are initialised from static metadata — no scene instances needed.
+  const [mappingsMap, setMappingsMap] = useState<Record<string, MidiMapping[]>>(
+    () =>
+      Object.fromEntries(
+        SCENE_METAS.map((m) => [m.id, [...m.defaultMappings]]),
+      ),
+  );
 
-  const activeId = activeScene?.id ?? "";
-  const activeMappings = activeId ? (mappingsMap[activeId] ?? []) : [];
+  const activeMeta = SCENE_METAS[activeIdx] ?? SCENE_METAS[0];
+  const activeId = activeMeta.id;
+  const activeMappings = useMemo(
+    () => mappingsMap[activeId] ?? [],
+    [mappingsMap, activeId],
+  );
+  const activeMappingsRef = useRef<MidiMapping[]>(activeMappings);
+
+  useEffect(() => {
+    activeMappingsRef.current = activeMappings;
+  }, [activeMappings]);
 
   const handleMappingsChange = useCallback(
     (id: string, newMappings: MidiMapping[]) => {
@@ -137,14 +169,14 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
     activeCanvasRef,
     activeScene,
     midiStateRef,
-    activeMappings,
+    activeMappingsRef,
   );
 
   return (
     <div className="flex h-full flex-col">
       <div className="border-border flex items-center gap-2 border-b px-2 py-1.5">
         <ThumbnailStrip
-          scenes={scenes}
+          scenes={SCENE_METAS}
           activeIdx={activeIdx}
           onSelect={setActiveIdx}
         />
@@ -162,29 +194,25 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
       </div>
 
       <div ref={containerRef} className="relative min-h-0 flex-1">
-        <canvas
-          ref={webglCanvasRef}
-          className={`absolute inset-0 h-full w-full ${
-            activeScene?.type === "three"
-              ? "opacity-100"
-              : "pointer-events-none opacity-0"
-          }`}
-          style={{ imageRendering: "auto" }}
-        />
-        <canvas
-          ref={canvas2dRef}
-          className={`absolute inset-0 h-full w-full ${
-            activeScene?.type === "canvas2d"
-              ? "opacity-100"
-              : "pointer-events-none opacity-0"
-          }`}
-          style={{ imageRendering: "auto" }}
-        />
+        {activeScene?.type === "three" && (
+          <canvas
+            ref={webglCanvasRef}
+            className="absolute inset-0 h-full w-full"
+            style={{ imageRendering: "auto" }}
+          />
+        )}
+        {activeScene?.type === "canvas2d" && (
+          <canvas
+            ref={canvas2dRef}
+            className="absolute inset-0 h-full w-full"
+            style={{ imageRendering: "auto" }}
+          />
+        )}
       </div>
 
-      {showModal && activeScene && (
+      {showModal && (
         <MappingModal
-          scene={activeScene}
+          scene={activeMeta}
           mappings={activeMappings}
           onChange={(m: MidiMapping[]) => handleMappingsChange(activeId, m)}
           onClose={() => setShowModal(false)}

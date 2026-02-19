@@ -93,6 +93,7 @@ export function FMSynthPanel({ params, setParams }: FMPanelProps) {
               max={2000}
               value={params.modIndex}
               onChange={(v) => update("modIndex", v)}
+              scale="log"
             />
           </div>
 
@@ -302,6 +303,7 @@ export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
               value={params.cutoff}
               onChange={(v) => update("cutoff", v)}
               unit="Hz"
+              scale="log"
             />
             <Knob
               label="Reso"
@@ -317,6 +319,7 @@ export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
               value={params.filterEnvAmt}
               onChange={(v) => update("filterEnvAmt", v)}
               unit="Hz"
+              scale="log"
             />
           </div>
 

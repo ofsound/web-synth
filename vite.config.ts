@@ -5,6 +5,13 @@ import tailwindcss from "@tailwindcss/vite";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    headers: {
+      // Allows navigator.requestMIDIAccess() without triggering Chrome's
+      // "NoSysexWebMIDIWithoutPermission" deprecation warning.
+      "Permissions-Policy": "midi=(self)",
+    },
+  },
   build: {
     rollupOptions: {
       output: {

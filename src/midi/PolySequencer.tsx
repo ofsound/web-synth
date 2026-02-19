@@ -8,10 +8,19 @@
  * Uses the Scheduler class (Chris Wilson look-ahead) for timing accuracy.
  */
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Scheduler } from "../utils/scheduler";
 import { midiToNoteName } from "../utils/midiUtils";
 import type { MidiBus } from "./MidiBus";
+import { resolveMidiChannel } from "./channelPolicy";
+import type { MidiChannelMode } from "./channelPolicy";
 
 /* ── Types ── */
 
@@ -26,17 +35,54 @@ function createEmptyStep(): StepData {
   return { notes: new Set(), velocity: 100, gate: 0.5, probability: 100 };
 }
 
-/* ── Preset rows — note values for the grid row labels ── */
-const DEFAULT_NOTES = [60, 62, 64, 65, 67, 69, 71, 72]; // C4 major scale
+/* —— Scale definitions — intervals from root in semitones — */
+const SCALES: Record<string, { label: string; intervals: number[] }> = {
+  major: { label: "Major", intervals: [0, 2, 4, 5, 7, 9, 11] },
+  minor: { label: "Minor", intervals: [0, 2, 3, 5, 7, 8, 10] },
+  dorian: { label: "Dorian", intervals: [0, 2, 3, 5, 7, 9, 10] },
+  phrygian: { label: "Phrygian", intervals: [0, 1, 3, 5, 7, 8, 10] },
+  penta_maj: { label: "Penta Maj", intervals: [0, 2, 4, 7, 9] },
+  penta_min: { label: "Penta Min", intervals: [0, 3, 5, 7, 10] },
+  blues: { label: "Blues", intervals: [0, 3, 5, 6, 7, 10] },
+  chromatic: {
+    label: "Chromatic",
+    intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+  },
+} as const;
+const ROOT_NAMES = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
 
 /* ── Component ── */
 
 interface PolySequencerProps {
   midiBus: MidiBus;
   ctx: AudioContext | null;
+  channelMode?: MidiChannelMode;
+  sourceChannel?: number;
+  normalizedChannel?: number;
+  onTransportStopRegister?: (stop: (() => void) | null) => void;
 }
 
-export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
+export function PolySequencer({
+  midiBus,
+  ctx,
+  channelMode = "normalized",
+  sourceChannel = 0,
+  normalizedChannel = 0,
+  onTransportStopRegister,
+}: PolySequencerProps) {
   const idBase = useId();
   const bpmInputId = `${idBase}-bpm`;
   const stepsSelectId = `${idBase}-steps`;
@@ -48,8 +94,16 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
   const [playing, setPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
 
-  // Row notes (which MIDI notes the rows represent)
-  const [rowNotes] = useState<number[]>(DEFAULT_NOTES);
+  // Scale and root note — determine which MIDI notes the grid rows represent
+  const [scaleName, setScaleName] = useState<keyof typeof SCALES>("major");
+  const [rootNote, setRootNote] = useState(0); // 0 = C
+
+  // Row notes derived from the selected scale + root (base octave: C3 = MIDI 48)
+  const rowNotes = useMemo(() => {
+    const { intervals } = SCALES[scaleName];
+    const base = 48 + rootNote;
+    return intervals.map((i) => base + i).filter((n) => n >= 0 && n <= 127);
+  }, [scaleName, rootNote]);
 
   // Grid: array of StepData, one per step
   const [steps, setSteps] = useState<StepData[]>(() =>
@@ -83,16 +137,21 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
   }, []);
 
   const flushSequencerNotes = useCallback(() => {
+    const channel = resolveMidiChannel({
+      mode: channelMode,
+      sourceChannel,
+      normalizedChannel,
+    });
     for (const note of activeSequencerNotesRef.current) {
       midiBus.emit({
         type: "noteoff",
-        channel: 0,
+        channel,
         note,
         velocity: 0,
       });
     }
     activeSequencerNotesRef.current.clear();
-  }, [midiBus]);
+  }, [channelMode, midiBus, normalizedChannel, sourceChannel]);
 
   const scheduleEvent = useCallback((fn: () => void, delayMs: number) => {
     const id = setTimeout(
@@ -172,19 +231,32 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
 
       const stepDuration = 60 / (bpm * 4);
       const gateTime = stepDuration * data.gate;
+      const channel = resolveMidiChannel({
+        mode: channelMode,
+        sourceChannel,
+        normalizedChannel,
+      });
 
       // Align note timing to the scheduler's audio-time clock.
-      const now = ctx?.currentTime ?? 0;
+      // Use getOutputTimestamp() for better accuracy between audio and document time
+      const audioTs = ctx?.getOutputTimestamp?.() ?? {
+        contextTime: ctx?.currentTime ?? 0,
+      };
+      const now = audioTs.contextTime ?? ctx?.currentTime ?? 0;
       const startDelaySec = Math.max(0, time + swingOffset - now);
       const noteOnDelayMs = startDelaySec * 1000;
-      const noteOffDelayMs = (startDelaySec + gateTime) * 1000;
+      // Floor the note-off delay so it can’t arrive before note-on under timer drift.
+      const noteOffDelayMs = Math.max(
+        noteOnDelayMs + 20,
+        (startDelaySec + gateTime) * 1000,
+      );
 
       for (const note of data.notes) {
         // Schedule noteOn and noteOff using scheduler-aligned delays.
         scheduleEvent(() => {
           midiBus.emit({
             type: "noteon",
-            channel: 0,
+            channel,
             note,
             velocity: data.velocity,
           });
@@ -194,7 +266,7 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         scheduleEvent(() => {
           midiBus.emit({
             type: "noteoff",
-            channel: 0,
+            channel,
             note,
             velocity: 0,
           });
@@ -202,7 +274,28 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         }, noteOffDelayMs);
       }
     };
-  }, [numSteps, bpm, midiBus, ctx, scheduleEvent]);
+  }, [
+    numSteps,
+    bpm,
+    midiBus,
+    ctx,
+    scheduleEvent,
+    channelMode,
+    sourceChannel,
+    normalizedChannel,
+  ]);
+
+  const stopTransport = useCallback(() => {
+    setPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    if (!onTransportStopRegister) return;
+    onTransportStopRegister(stopTransport);
+    return () => {
+      onTransportStopRegister(null);
+    };
+  }, [onTransportStopRegister, stopTransport]);
 
   // Start / Stop
   useEffect(() => {
@@ -348,6 +441,39 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         >
           Clear
         </button>
+
+        {/* Scale and root note selector */}
+        <div className="flex items-center gap-1">
+          <span className="text-text-muted text-xs">Scale</span>
+          <select
+            value={scaleName as string}
+            onChange={(e) =>
+              setScaleName(e.target.value as keyof typeof SCALES)
+            }
+            aria-label="Sequencer scale"
+            name="scale"
+            className="border-border bg-surface-alt text-text rounded border px-2 py-1 text-xs"
+          >
+            {Object.entries(SCALES).map(([key, { label }]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={rootNote}
+            onChange={(e) => setRootNote(Number(e.target.value))}
+            aria-label="Sequencer root note"
+            name="root-note"
+            className="border-border bg-surface-alt text-text rounded border px-1.5 py-1 text-xs"
+          >
+            {ROOT_NAMES.map((name, i) => (
+              <option key={i} value={i}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Step grid */}

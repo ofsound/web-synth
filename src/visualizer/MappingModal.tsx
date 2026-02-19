@@ -14,10 +14,10 @@ import type {
   VisualTarget,
   CurveType,
 } from "./MidiMapper";
-import type { VisualizerScene } from "./scenes/types";
+import type { SceneMeta } from "./scenes";
 
 interface Props {
-  scene: VisualizerScene;
+  scene: SceneMeta;
   mappings: MidiMapping[];
   onChange: (mappings: MidiMapping[]) => void;
   onClose: () => void;

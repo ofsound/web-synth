@@ -13,10 +13,14 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
   const [ctx, setCtx] = useState<AudioContext | null>(null);
 
   const init = useCallback(() => {
-    if (initializedRef.current) return;
+    if (initializedRef.current && ctxRef.current?.state !== "closed") return;
     initializedRef.current = true;
 
     const ac = new AudioContext();
+    // Eagerly resume — Safari and mobile Chrome may create in "suspended" state
+    if (ac.state === "suspended") {
+      ac.resume();
+    }
     ctxRef.current = ac;
     setCtx(ac);
   }, []);
@@ -40,6 +44,7 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
   // Cleanup AudioContext on unmount
   useEffect(() => {
     return () => {
+      initializedRef.current = false;
       if (ctxRef.current && ctxRef.current.state !== "closed") {
         ctxRef.current.close();
       }

@@ -15,7 +15,7 @@
  *                 └─ fx3.in → fx3.out ─┘
  */
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import type { EffectIO } from "../types/audio";
 
 export interface EffectSlot {
@@ -27,75 +27,71 @@ export interface EffectSlot {
 
 export type RoutingMode = "serial" | "parallel";
 
+/**
+ * Rebuild the entire audio routing graph.
+ * Pure function — no React refs or state.
+ */
+function rewire(
+  send: GainNode,
+  ret: GainNode,
+  slots: EffectSlot[],
+  mode: RoutingMode,
+) {
+  // First, disconnect effectsSend from everything
+  try {
+    send.disconnect();
+  } catch {
+    /* ok */
+  }
+
+  // Disconnect all effect outputs
+  for (const slot of slots) {
+    if (slot.io) {
+      try {
+        slot.io.output.disconnect();
+      } catch {
+        /* ok */
+      }
+    }
+  }
+
+  const active = slots.filter((s) => s.enabled && s.io);
+
+  if (active.length === 0) {
+    // Bypass: direct connection
+    send.connect(ret);
+    return;
+  }
+
+  if (mode === "serial") {
+    // Chain: send → fx1 → fx2 → ... → return
+    send.connect(active[0].io!.input);
+    for (let i = 0; i < active.length - 1; i++) {
+      active[i].io!.output.connect(active[i + 1].io!.input);
+    }
+    active[active.length - 1].io!.output.connect(ret);
+  } else {
+    // Parallel: send → all fx inputs, all fx outputs → return
+    for (const slot of active) {
+      send.connect(slot.io!.input);
+      slot.io!.output.connect(ret);
+    }
+  }
+}
+
 export function useEffectRack(
   effectsSend: GainNode | null,
   effectsReturn: GainNode | null,
 ) {
   const [slots, setSlots] = useState<EffectSlot[]>([]);
   const [routingMode, setRoutingMode] = useState<RoutingMode>("serial");
-  const slotsRef = useRef(slots);
-  const routingRef = useRef(routingMode);
 
+  // Single consolidated effect: rewire whenever any dependency changes.
+  // All values are read directly from state/props — no stale-ref timing issues.
   useEffect(() => {
-    slotsRef.current = slots;
-  }, [slots]);
-  useEffect(() => {
-    routingRef.current = routingMode;
-  }, [routingMode]);
-
-  /**
-   * Rebuild the entire audio routing graph.
-   * Called whenever slots, enabled states, ordering, or mode change.
-   */
-  const rewire = useCallback(() => {
     if (!effectsSend || !effectsReturn) return;
-
-    // First, disconnect effectsSend from everything
-    try {
-      effectsSend.disconnect();
-    } catch {
-      /* ok */
-    }
-
-    // Disconnect all effect outputs
-    for (const slot of slotsRef.current) {
-      if (slot.io) {
-        try {
-          slot.io.output.disconnect();
-        } catch {
-          /* ok */
-        }
-      }
-    }
-
-    const active = slotsRef.current.filter((s) => s.enabled && s.io);
-
-    if (active.length === 0) {
-      // Bypass: direct connection
-      effectsSend.connect(effectsReturn);
-      return;
-    }
-
-    if (routingRef.current === "serial") {
-      // Chain: send → fx1 → fx2 → ... → return
-      effectsSend.connect(active[0].io!.input);
-      for (let i = 0; i < active.length - 1; i++) {
-        active[i].io!.output.connect(active[i + 1].io!.input);
-      }
-      active[active.length - 1].io!.output.connect(effectsReturn);
-    } else {
-      // Parallel: send → all fx inputs, all fx outputs → return
-      for (const slot of active) {
-        effectsSend.connect(slot.io!.input);
-        slot.io!.output.connect(effectsReturn);
-      }
-    }
-  }, [effectsSend, effectsReturn]);
-
-  // Rewire whenever slots or mode change
-  useEffect(() => {
-    rewire();
-  }, [slots, routingMode, rewire]);
+    rewire(effectsSend, effectsReturn, slots, routingMode);
+  }, [effectsSend, effectsReturn, slots, routingMode]);
 
   /** Register an effect into the rack. Call order determines initial position. */
   const registerEffect = useCallback(

@@ -17,7 +17,7 @@ import type { MidiMapping, ResolvedParams } from "../MidiMapper";
 // 12 pitch-class hues evenly distributed around the colour wheel
 const PITCH_HUES = Array.from({ length: 12 }, (_, i) => i / 12);
 
-const GEOMETRIES = [
+const GEOMETRY_FACTORIES = [
   () => new THREE.IcosahedronGeometry(0.5, 0),
   () => new THREE.OctahedronGeometry(0.5, 0),
   () => new THREE.TetrahedronGeometry(0.5, 0),
@@ -77,6 +77,35 @@ export class GeometricOrbits implements VisualizerScene {
   private ambientLight = new THREE.AmbientLight(0x333366, 0.8);
   private pointLight = new THREE.PointLight(0xffffff, 1.5, 100);
   private lastNotes = new Set<number>();
+
+  // Pooled geometries (keyed by pitchClass % 4) and materials (keyed by pitchClass)
+  private geometryPool = new Map<number, THREE.BufferGeometry>();
+  private materialPool = new Map<number, THREE.MeshStandardMaterial>();
+
+  private getPooledGeometry(pitchClass: number): THREE.BufferGeometry {
+    const key = pitchClass % GEOMETRY_FACTORIES.length;
+    let geom = this.geometryPool.get(key);
+    if (!geom) {
+      geom = GEOMETRY_FACTORIES[key]();
+      this.geometryPool.set(key, geom);
+    }
+    return geom;
+  }
+
+  private getPooledMaterial(pitchClass: number): THREE.MeshStandardMaterial {
+    let mat = this.materialPool.get(pitchClass);
+    if (!mat) {
+      const hue = PITCH_HUES[pitchClass];
+      mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(hue, 0.7, 0.45),
+        wireframe: true,
+        emissive: new THREE.Color().setHSL(hue, 0.9, 0.2),
+        emissiveIntensity: 0.6,
+      });
+      this.materialPool.set(pitchClass, mat);
+    }
+    return mat;
+  }
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
     this.resetOrbits();
@@ -175,6 +204,7 @@ export class GeometricOrbits implements VisualizerScene {
 
   dispose() {
     this.resetOrbits();
+    this.disposePool();
     this.lastNotes.clear();
     this.renderer?.dispose();
     this.renderer = null;
@@ -185,15 +215,8 @@ export class GeometricOrbits implements VisualizerScene {
   private spawnMesh(note: number, velNorm: number, sizeScale: number) {
     const pitchClass = note % 12;
     const octave = Math.floor(note / 12);
-    const hue = PITCH_HUES[pitchClass];
-    const geomFactory = GEOMETRIES[pitchClass % GEOMETRIES.length];
-    const geometry = geomFactory();
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color().setHSL(hue, 0.7, 0.45),
-      wireframe: true,
-      emissive: new THREE.Color().setHSL(hue, 0.9, 0.2),
-      emissiveIntensity: 0.6,
-    });
+    const geometry = this.getPooledGeometry(pitchClass);
+    const material = this.getPooledMaterial(pitchClass);
 
     const mesh = new THREE.Mesh(geometry, material);
     const radius = 2 + octave * 1.8;
@@ -242,8 +265,7 @@ export class GeometricOrbits implements VisualizerScene {
       ease: "power2.in",
       onComplete: () => {
         this.orbitGroup.remove(orb.mesh);
-        orb.mesh.geometry.dispose();
-        (orb.mesh.material as THREE.Material).dispose();
+        // Geometry + material are pooled; just remove from scene
         this.meshes.delete(note);
       },
     });
@@ -254,9 +276,15 @@ export class GeometricOrbits implements VisualizerScene {
     for (const [, orb] of this.meshes) {
       orb.tween?.kill();
       this.orbitGroup.remove(orb.mesh);
-      orb.mesh.geometry.dispose();
-      (orb.mesh.material as THREE.Material).dispose();
+      // Geometry + material are pooled; don't dispose them per-mesh
     }
     this.meshes.clear();
+  }
+
+  private disposePool() {
+    for (const geom of this.geometryPool.values()) geom.dispose();
+    for (const mat of this.materialPool.values()) mat.dispose();
+    this.geometryPool.clear();
+    this.materialPool.clear();
   }
 }
