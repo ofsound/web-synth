@@ -69,16 +69,17 @@ export function useSynthOrchestrator(
         master?.effectsSend ?? null,
         master?.effectsReturn ?? null,
     );
+    const { registerEffects } = effectRack;
     // Register effects once when master nodes and effect IOs are ready.
     // Re-run when IO refs change (e.g. after ctx resume) so wiring stays correct.
     useEffect(() => {
         if (!master?.effectsSend || !master?.effectsReturn) return;
-        effectRack.registerEffects([
+        registerEffects([
             { id: "delay", label: "Delay / Echo", io: delay.io },
             { id: "phaser", label: "Phaser", io: phaser.io },
             { id: "bitcrusher", label: "Bitcrusher", io: bitcrusher.io },
         ]);
-    }, [master?.effectsSend, master?.effectsReturn, delay.io, phaser.io, bitcrusher.io, effectRack.registerEffects]);
+    }, [master?.effectsSend, master?.effectsReturn, delay.io, phaser.io, bitcrusher.io, registerEffects]);
 
     return {
         master,

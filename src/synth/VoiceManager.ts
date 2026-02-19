@@ -66,6 +66,18 @@ export class VoiceManager<V> {
         return this.releasing.size;
     }
 
+    /** Get the voice object for a specific active note (not releasing). */
+    getVoice(note: number): V | undefined {
+        return this.voices.get(note);
+    }
+
+    /** Iterate over all active (non-releasing) voices. */
+    forEachActive(fn: (voice: V, note: number) => void): void {
+        for (const [note, voice] of this.voices) {
+            fn(voice, note);
+        }
+    }
+
     noteOn(note: number, velocity: number, time: number) {
         // Kill any voice still in release phase for this note
         this.killReleasing(note);

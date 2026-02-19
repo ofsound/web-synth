@@ -6,7 +6,7 @@
  * sliders.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { MIDI_SOURCES, VISUAL_TARGETS, CURVES } from "./MidiMapper";
 import type {
   MidiMapping,
@@ -24,6 +24,8 @@ interface Props {
 }
 
 export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
+  const formIdBase = useId();
+
   // Local draft so we can edit without live-updating every keystroke
   const [draft, setDraft] = useState<MidiMapping[]>(() =>
     mappings.map((m) => ({ ...m, range: [...m.range] as [number, number] })),
@@ -118,8 +120,16 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
               className="bg-surface-alt border-border flex flex-wrap items-center gap-2 rounded-lg border p-2 text-xs"
             >
               {/* Target */}
-              <label className="text-text-muted w-16 shrink-0">Target</label>
+              <label
+                htmlFor={`${formIdBase}-target-${i}`}
+                className="text-text-muted w-16 shrink-0"
+              >
+                Target
+              </label>
               <select
+                id={`${formIdBase}-target-${i}`}
+                name={`mapping-${i}-target`}
+                aria-label={`Mapping row ${i + 1} target`}
                 value={m.target}
                 onChange={(e) =>
                   updateMapping(i, { target: e.target.value as VisualTarget })
@@ -134,10 +144,16 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
               </select>
 
               {/* Source */}
-              <label className="text-text-muted ml-2 w-14 shrink-0">
+              <label
+                htmlFor={`${formIdBase}-source-${i}`}
+                className="text-text-muted ml-2 w-14 shrink-0"
+              >
                 Source
               </label>
               <select
+                id={`${formIdBase}-source-${i}`}
+                name={`mapping-${i}-source`}
+                aria-label={`Mapping row ${i + 1} source`}
                 value={m.source}
                 onChange={(e) =>
                   updateMapping(i, { source: e.target.value as MidiSource })
@@ -154,8 +170,16 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
               {/* CC number (only when source=cc) */}
               {m.source === "cc" && (
                 <>
-                  <label className="text-text-muted ml-2">CC#</label>
+                  <label
+                    htmlFor={`${formIdBase}-cc-${i}`}
+                    className="text-text-muted ml-2"
+                  >
+                    CC#
+                  </label>
                   <input
+                    id={`${formIdBase}-cc-${i}`}
+                    name={`mapping-${i}-cc`}
+                    aria-label={`Mapping row ${i + 1} CC number`}
                     type="number"
                     min={0}
                     max={127}
@@ -171,10 +195,16 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
               )}
 
               {/* Curve */}
-              <label className="text-text-muted ml-2 w-12 shrink-0">
+              <label
+                htmlFor={`${formIdBase}-curve-${i}`}
+                className="text-text-muted ml-2 w-12 shrink-0"
+              >
                 Curve
               </label>
               <select
+                id={`${formIdBase}-curve-${i}`}
+                name={`mapping-${i}-curve`}
+                aria-label={`Mapping row ${i + 1} curve`}
                 value={m.curve}
                 onChange={(e) =>
                   updateMapping(i, { curve: e.target.value as CurveType })
@@ -189,8 +219,16 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
               </select>
 
               {/* Range */}
-              <label className="text-text-muted ml-2">Range</label>
+              <label
+                htmlFor={`${formIdBase}-range-min-${i}`}
+                className="text-text-muted ml-2"
+              >
+                Range
+              </label>
               <input
+                id={`${formIdBase}-range-min-${i}`}
+                name={`mapping-${i}-range-min`}
+                aria-label={`Mapping row ${i + 1} range minimum`}
                 type="number"
                 step={0.05}
                 min={0}
@@ -205,6 +243,9 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
               />
               <span className="text-text-muted">–</span>
               <input
+                id={`${formIdBase}-range-max-${i}`}
+                name={`mapping-${i}-range-max`}
+                aria-label={`Mapping row ${i + 1} range maximum`}
                 type="number"
                 step={0.05}
                 min={0}

@@ -10,9 +10,12 @@
  * Uses recursive setTimeout for timing-stable grain scheduling
  * (more accurate than setInterval under CPU load).
  *
+ * Voice allocation/stealing/release is handled by VoiceManager (shared
+ * with FM and Subtractive synths).  This hook adds the granular-specific
+ * grain scheduler loop on top.
+ *
  * Shared plumbing (params, output node, MIDI subscription) is provided
- * by `useSynthIO`; this hook adds granular-specific voice management
- * and the lookahead grain scheduler on top.
+ * by `useSynthIO`.
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -22,6 +25,7 @@ import { DEFAULT_AMP_ADSR } from "./ADSREnvelope";
 import type { MidiBus, MidiEvent } from "../midi/MidiBus";
 import { velocityToGain } from "./useSynthBase";
 import { useSynthIO } from "./useSynthIO";
+import { VoiceManager } from "./VoiceManager";
 import {
   MAX_GRANULAR_VOICES,
   MAX_WINDOW_CACHE,
@@ -100,22 +104,11 @@ async function createSourceBuffer(ctx: AudioContext): Promise<AudioBuffer> {
 }
 
 export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, listenChannel?: number | null) {
-  const voicesRef = useRef<Map<number, GranularVoice>>(new Map());
   const sourceBufferRef = useRef<AudioBuffer | null>(null);
   const bufferReadyRef = useRef(false);
-  const cleanupTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(
-    new Set(),
-  );
+  const voiceManagerRef = useRef<VoiceManager<GranularVoice> | null>(null);
 
-  // ── Kill / Start / Stop voice helpers ──
-
-  const killVoice = useCallback((note: number) => {
-    const voice = voicesRef.current.get(note);
-    if (!voice) return;
-    voice.voiceGain.disconnect();
-    voicesRef.current.delete(note);
-  }, []);
-
+  // MIDI handler — forwarded to VoiceManager via refs
   const startVoiceRef = useRef<(note: number, velocity: number, audioCtx: AudioContext) => void>(
     () => { },
   );
@@ -123,7 +116,6 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, lis
     () => { },
   );
 
-  // MIDI handler — forwarded to voice start/stop via refs
   const handleMidi = useCallback((e: MidiEvent, audioCtx: AudioContext) => {
     if (e.type === "noteon" && e.velocity > 0) {
       startVoiceRef.current(e.note, e.velocity, audioCtx);
@@ -209,101 +201,81 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, lis
     [ctx, getParams],
   );
 
-  // ── Voice start / stop ──
+  // ── VoiceManager setup: create / release / kill callbacks ──
 
   useEffect(() => {
     startVoiceRef.current = (note: number, velocity: number, audioCtx: AudioContext) => {
       if (!outputRef.current || !sourceBufferRef.current) return;
-      // Re-trigger: kill existing voice for this note
-      if (voicesRef.current.has(note)) {
-        killVoice(note);
-      }
+      const vm = voiceManagerRef.current;
+      if (!vm) return;
 
-      // Voice stealing: if at max capacity, kill the oldest voice
-      if (voicesRef.current.size >= MAX_GRANULAR_VOICES) {
-        const oldest = voicesRef.current.keys().next().value;
-        if (oldest !== undefined) {
-          killVoice(oldest);
-        }
-      }
-
-      const p = getParams();
-      const velGain = velocityToGain(velocity);
-
-      const voiceGain = audioCtx.createGain();
       const now = audioCtx.currentTime;
-
-      const atk = Math.max(p.ampEnv.attack, 0.005);
-      const dec = Math.max(p.ampEnv.decay, 0.01);
-      voiceGain.gain.cancelScheduledValues(now);
-      voiceGain.gain.setValueAtTime(0.001, now);
-      voiceGain.gain.exponentialRampToValueAtTime(1.0 * velGain, now + atk);
-      voiceGain.gain.setTargetAtTime(
-        p.ampEnv.sustain * velGain,
-        now + atk,
-        dec / 4,
-      );
-
-      voiceGain.connect(outputRef.current);
-
-      const voice: GranularVoice = {
-        voiceGain,
-        nextGrainTime: now,
-        note,
-      };
-
-      voicesRef.current.set(note, voice);
+      vm.noteOn(note, velocity, now);
     };
 
     stopVoiceRef.current = (note: number, audioCtx: AudioContext) => {
-      const voice = voicesRef.current.get(note);
-      if (!voice) return;
-
-      const p = getParams();
-      const now = audioCtx.currentTime;
-      const rel = Math.max(p.ampEnv.release, 0.01);
-
-      voice.voiceGain.gain.cancelScheduledValues(now);
-      voice.voiceGain.gain.setValueAtTime(voice.voiceGain.gain.value, now);
-      voice.voiceGain.gain.setTargetAtTime(0.001, now, rel / 4);
-
-      const disconnectTimer = setTimeout(
-        () => {
-          voice.voiceGain.disconnect();
-          cleanupTimersRef.current.delete(disconnectTimer);
-        },
-        (rel + 0.5) * 1000,
-      );
-      cleanupTimersRef.current.add(disconnectTimer);
-
-      voicesRef.current.delete(note);
+      const vm = voiceManagerRef.current;
+      if (!vm) return;
+      vm.noteOff(note, audioCtx.currentTime);
     };
-  }, [killVoice, getParams, outputRef]);
+  }, [outputRef]);
 
   // ── Kill all voices when disabled ──
 
   useEffect(() => {
     if (params.enabled) return;
-    const notesToKill = [...voicesRef.current.keys()];
-    for (const note of notesToKill) {
-      killVoice(note);
-    }
-  }, [params.enabled, killVoice]);
+    voiceManagerRef.current?.allNotesOff();
+  }, [params.enabled]);
 
   // ── Lookahead scheduler loop ──
 
   const schedulerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!ctx || !bufferReadyRef.current) {
-      // Re-check when source buffer becomes ready
-      // (bufferReadyRef is sync; the effect re-runs on ctx change)
-    }
     if (!ctx) return;
-    const voicesAtMount = voicesRef.current;
-    const cleanupTimersAtMount = cleanupTimersRef.current;
 
-    // Wait for buffer — poll briefly since buffer creation is async
+    // Create VoiceManager with gran-specific callbacks
+    const vm = new VoiceManager<GranularVoice>({
+      maxVoices: MAX_GRANULAR_VOICES,
+      releaseDuration: getParams().ampEnv.release + 0.1,
+
+      createVoice: (note: number, velocity: number, time: number): GranularVoice => {
+        const p = getParams();
+        const velGain = velocityToGain(velocity);
+
+        const voiceGain = ctx.createGain();
+        const atk = Math.max(p.ampEnv.attack, 0.005);
+        const dec = Math.max(p.ampEnv.decay, 0.01);
+        voiceGain.gain.cancelScheduledValues(time);
+        voiceGain.gain.setValueAtTime(0.001, time);
+        voiceGain.gain.exponentialRampToValueAtTime(1.0 * velGain, time + atk);
+        voiceGain.gain.setTargetAtTime(
+          p.ampEnv.sustain * velGain,
+          time + atk,
+          dec / 4,
+        );
+
+        if (outputRef.current) voiceGain.connect(outputRef.current);
+
+        return { voiceGain, nextGrainTime: time, note };
+      },
+
+      releaseVoice: (voice: GranularVoice, _note: number, time: number) => {
+        const p = getParams();
+        const rel = Math.max(p.ampEnv.release, 0.01);
+        voice.voiceGain.gain.cancelScheduledValues(time);
+        voice.voiceGain.gain.setValueAtTime(voice.voiceGain.gain.value, time);
+        voice.voiceGain.gain.setTargetAtTime(0.001, time, rel / 4);
+      },
+
+      killVoice: (voice: GranularVoice) => {
+        try { voice.voiceGain.disconnect(); } catch { /* ok */ }
+      },
+    });
+
+    voiceManagerRef.current = vm;
+
+    // Wait for source buffer then start scheduler
     let cancelled = false;
     const waitForBuffer = () => {
       if (cancelled) return;
@@ -317,10 +289,9 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, lis
     const startScheduler = () => {
       const schedule = () => {
         if (cancelled) return;
-        const voices = voicesRef.current;
         const p = getParams();
 
-        if (!p.enabled || voices.size === 0) {
+        if (!p.enabled || vm.activeCount === 0) {
           schedulerTimerRef.current = setTimeout(
             schedule,
             SCHEDULER_IDLE_LOOKAHEAD_MS,
@@ -331,14 +302,15 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, lis
         const now = ctx.currentTime;
         const interval = 1 / Math.max(p.density, 1);
 
-        for (const voice of voices.values()) {
+        vm.forEachActive((voice) => {
           while (voice.nextGrainTime < now + SCHEDULE_AHEAD_SECONDS) {
             const freq = midiToFreq(voice.note);
             const playbackRate = freq / GRANULAR_BASE_FREQ;
             spawnGrain(voice.voiceGain, playbackRate, voice.nextGrainTime);
             voice.nextGrainTime += interval;
           }
-        }
+        });
+
         schedulerTimerRef.current = setTimeout(schedule, SCHEDULER_LOOKAHEAD_MS);
       };
 
@@ -353,18 +325,10 @@ export function useGranularSynth(ctx: AudioContext | null, midiBus: MidiBus, lis
         clearTimeout(schedulerTimerRef.current);
         schedulerTimerRef.current = null;
       }
-      // Kill all voices and clear release timers
-      const notesToKill = [...voicesAtMount.keys()];
-      for (const note of notesToKill) {
-        killVoice(note);
-      }
-      voicesAtMount.clear();
-      for (const tid of cleanupTimersAtMount) {
-        clearTimeout(tid);
-      }
-      cleanupTimersAtMount.clear();
+      vm.allNotesOff();
+      voiceManagerRef.current = null;
     };
-  }, [ctx, spawnGrain, killVoice, getParams]);
+  }, [ctx, spawnGrain, getParams, outputRef]);
 
   return { outputNode, params, setParams };
 }

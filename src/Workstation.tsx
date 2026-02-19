@@ -8,7 +8,16 @@
  * Decomposed into section sub-components to isolate re-renders.
  */
 
-import { Suspense, lazy, memo, useCallback, useRef, useEffect, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  memo,
+  useCallback,
+  useRef,
+  useEffect,
+  useState,
+  useMemo,
+} from "react";
 import { useAudioContext } from "./hooks/useAudioContext";
 import { useMidiBus } from "./midi/useMidiBus";
 import { useSynthOrchestrator } from "./hooks/useSynthOrchestrator";
@@ -45,13 +54,9 @@ import type { SubtractiveSynthParams } from "./synth/useSubtractiveSynth";
 import type { GranularSynthParams } from "./synth/useGranularSynth";
 import type { EffectSlot, RoutingMode } from "./effects/useEffectRack";
 import type { MidiChannelMode } from "./midi/channelPolicy";
-import {
-  listPresets,
-  savePreset,
-  loadPreset,
-  deletePreset,
-  type Preset,
-} from "./utils/presetStore";
+import { usePresetManager } from "./hooks/usePresetManager";
+import { useMidiCCMapping, CC_TARGETS } from "./midi/useMidiCCMapping";
+import type { CCMappingSetters } from "./midi/useMidiCCMapping";
 
 /* ── Memoized Section Components ── */
 
@@ -65,10 +70,13 @@ function ChannelSelect({
   value: number | null;
   onChange: (ch: number | null) => void;
 }) {
+  const selectId = `ch-${label.toLowerCase().replace(/\s+/g, "-")}`;
   return (
     <div className="mb-1 flex items-center gap-2 text-[10px]">
       <span className="text-text-muted">{label} Ch:</span>
       <select
+        id={selectId}
+        name={selectId}
         className="bg-surface border-border text-text rounded border px-1 py-0.5 text-[10px]"
         value={value === null ? "all" : String(value)}
         onChange={(e) => {
@@ -422,64 +430,40 @@ export default function App() {
     ],
   );
 
-  // ── Preset management ──
-  const [presets, setPresets] = useState<Preset[]>(() => listPresets());
-  const [presetName, setPresetName] = useState("");
-
-  const handleSavePreset = useCallback(() => {
-    const name = presetName.trim();
-    if (!name) return;
-    const preset: Preset = {
-      name,
-      createdAt: Date.now(),
-      fm: fmSynth.params,
-      sub: subSynth.params,
-      gran: granSynth.params,
-      effects: {
-        delayParams: delay.params,
-        phaserParams: phaser.params,
-        bitcrusherParams: bitcrusher.params,
-        rackSlots: effectRack.slots.map((s) => ({
-          id: s.id,
-          enabled: s.enabled,
-        })),
-        routingMode: effectRack.routingMode,
-      },
-      channels: { fmChannel, subChannel, granChannel },
+  // ── Preset management (extracted to dedicated hook) ──
+  const presetSources = useMemo(
+    () => ({
+      fmParams: fmSynth.params,
+      subParams: subSynth.params,
+      granParams: granSynth.params,
+      delayParams: delay.params,
+      phaserParams: phaser.params,
+      bitcrusherParams: bitcrusher.params,
+      effectSlots: effectRack.slots,
+      routingMode: effectRack.routingMode,
+      fmChannel,
+      subChannel,
+      granChannel,
       masterVolume,
-    };
-    savePreset(preset);
-    setPresets(listPresets());
-    setPresetName("");
-  }, [
-    presetName,
-    fmSynth.params,
-    subSynth.params,
-    granSynth.params,
-    delay.params,
-    phaser.params,
-    bitcrusher.params,
-    effectRack.slots,
-    effectRack.routingMode,
-    fmChannel,
-    subChannel,
-    granChannel,
-    masterVolume,
-  ]);
+    }),
+    [
+      fmSynth.params,
+      subSynth.params,
+      granSynth.params,
+      delay.params,
+      phaser.params,
+      bitcrusher.params,
+      effectRack.slots,
+      effectRack.routingMode,
+      fmChannel,
+      subChannel,
+      granChannel,
+      masterVolume,
+    ],
+  );
 
-  // Use refs for preset load to avoid dependency on full synth/effect objects.
-  const presetSettersRef = useRef({
-    setFmParams: fmSynth.setParams,
-    setSubParams: subSynth.setParams,
-    setGranParams: granSynth.setParams,
-    setDelayParams: delay.setParams,
-    setPhaserParams: phaser.setParams,
-    setBitcrusherParams: bitcrusher.setParams,
-    setEffectEnabled: effectRack.setEffectEnabled,
-    setRoutingMode: effectRack.setRoutingMode,
-  });
-  useEffect(() => {
-    presetSettersRef.current = {
+  const presetSetters = useMemo(
+    () => ({
       setFmParams: fmSynth.setParams,
       setSubParams: subSynth.setParams,
       setGranParams: granSynth.setParams,
@@ -488,42 +472,55 @@ export default function App() {
       setBitcrusherParams: bitcrusher.setParams,
       setEffectEnabled: effectRack.setEffectEnabled,
       setRoutingMode: effectRack.setRoutingMode,
-    };
-  }, [
-    fmSynth.setParams,
-    subSynth.setParams,
-    granSynth.setParams,
-    delay.setParams,
-    phaser.setParams,
-    bitcrusher.setParams,
-    effectRack.setEffectEnabled,
-    effectRack.setRoutingMode,
-  ]);
+      setFmChannel,
+      setSubChannel,
+      setGranChannel,
+      setMasterVolume,
+    }),
+    [
+      fmSynth.setParams,
+      subSynth.setParams,
+      granSynth.setParams,
+      delay.setParams,
+      phaser.setParams,
+      bitcrusher.setParams,
+      effectRack.setEffectEnabled,
+      effectRack.setRoutingMode,
+      setMasterVolume,
+    ],
+  );
 
-  const handleLoadPreset = useCallback((name: string) => {
-    const preset = loadPreset(name);
-    if (!preset) return;
-    const s = presetSettersRef.current;
-    s.setFmParams(preset.fm);
-    s.setSubParams(preset.sub);
-    s.setGranParams(preset.gran);
-    s.setDelayParams(preset.effects.delayParams);
-    s.setPhaserParams(preset.effects.phaserParams);
-    s.setBitcrusherParams(preset.effects.bitcrusherParams);
-    for (const slot of preset.effects.rackSlots) {
-      s.setEffectEnabled(slot.id, slot.enabled);
-    }
-    s.setRoutingMode(preset.effects.routingMode);
-    setFmChannel(preset.channels.fmChannel);
-    setSubChannel(preset.channels.subChannel);
-    setGranChannel(preset.channels.granChannel);
-    setMasterVolume(preset.masterVolume);
-  }, []); // Setters from ref; state setters (setFmChannel, etc.) are stable
+  const {
+    presets,
+    presetName,
+    setPresetName,
+    handleSavePreset,
+    handleLoadPreset,
+    handleDeletePreset,
+  } = usePresetManager(presetSources, presetSetters);
 
-  const handleDeletePreset = useCallback((name: string) => {
-    deletePreset(name);
-    setPresets(listPresets());
-  }, []);
+  // ── MIDI CC → synth param mapping ──
+  const ccSetters = useMemo<CCMappingSetters>(
+    () => ({
+      setFmParams: fmSynth.setParams,
+      setSubParams: subSynth.setParams,
+      setGranParams: granSynth.setParams,
+      setDelayParams: delay.setParams,
+      setPhaserParams: phaser.setParams,
+      setBitcrusherParams: bitcrusher.setParams,
+      setMasterVolume,
+    }),
+    [
+      fmSynth.setParams,
+      subSynth.setParams,
+      granSynth.setParams,
+      delay.setParams,
+      phaser.setParams,
+      bitcrusher.setParams,
+      setMasterVolume,
+    ],
+  );
+  const ccMapping = useMidiCCMapping(midiBus, ccSetters);
 
   return (
     <div className="bg-surface text-text flex h-screen flex-col overflow-hidden">
@@ -677,6 +674,74 @@ export default function App() {
                 analyserR={master?.analyserR ?? null}
               />
             </ErrorBoundary>
+
+            {/* ═══ SECTION 5: MIDI CC MAPPING ═══ */}
+            <section>
+              <h2 className="text-text-muted mb-2 text-xs font-semibold tracking-wider uppercase">
+                MIDI CC Mapping
+              </h2>
+              <div className="border-border space-y-2 rounded-lg border p-3">
+                {/* CC Learn row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    id="cc-target-select"
+                    name="cc-target-select"
+                    className="bg-surface border-border text-text rounded border px-2 py-1 text-xs"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) ccMapping.startLearn(e.target.value);
+                    }}
+                  >
+                    <option value="">CC Learn…</option>
+                    {Object.entries(CC_TARGETS).map(([key, { label }]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  {ccMapping.learning && (
+                    <span className="text-accent animate-pulse text-xs">
+                      Move a CC knob…{" "}
+                      <button
+                        type="button"
+                        onClick={ccMapping.cancelLearn}
+                        className="text-text-muted underline"
+                      >
+                        cancel
+                      </button>
+                    </span>
+                  )}
+                </div>
+
+                {/* Active mappings */}
+                {ccMapping.mappings.length === 0 ? (
+                  <p className="text-text-muted text-[10px]">
+                    No CC mappings. Select a target above, then move a MIDI CC
+                    knob/slider to bind.
+                  </p>
+                ) : (
+                  <div className="grid gap-1">
+                    {ccMapping.mappings.map((m) => (
+                      <div
+                        key={m.cc}
+                        className="text-text flex items-center justify-between text-[10px]"
+                      >
+                        <span>
+                          CC {m.cc} → {m.label}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => ccMapping.removeMapping(m.cc)}
+                          className="text-danger text-[10px]"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         </div>
 

@@ -69,27 +69,22 @@ const ROOT_NAMES = [
 
 /**
  * Translucent column overlay that moves to the active step each tick.
- * Isolated so the note/velocity/gate/prob grid rows are NEVER re-rendered
- * solely because the playback position advanced.
+ * Now driven imperatively via a forwarded ref — zero React re-renders.
  */
 const StepHighlightOverlay = memo(function StepHighlightOverlay({
-  currentStep,
-  numSteps,
+  highlightRef,
   rowCount,
 }: {
-  currentStep: number;
-  numSteps: number;
+  highlightRef: React.RefObject<HTMLDivElement | null>;
   rowCount: number;
 }) {
-  if (currentStep < 0 || currentStep >= numSteps) return null;
-  // 48px label + 32px per step
-  const left = 48 + currentStep * 32;
   // 24px header + rowCount * 24px note rows + 20px per sub-row (vel/gate/prob)
   const height = 24 + rowCount * 24 + 3 * 20;
   return (
     <div
+      ref={highlightRef}
       className="bg-accent/10 border-accent/30 pointer-events-none absolute top-0 w-8 border-x"
-      style={{ left, height }}
+      style={{ height, display: "none" }}
       aria-hidden="true"
     />
   );
@@ -160,7 +155,9 @@ export function PolySequencer({
   const [bpm, setBpm] = useState(120);
   const [swing, setSwing] = useState(0); // 0–0.5
   const [playing, setPlaying] = useState(false);
-  const [currentStep, setCurrentStep] = useState(-1);
+  const currentStepRef = useRef(-1);
+  const highlightRef = useRef<HTMLDivElement>(null);
+  const headerRowRef = useRef<HTMLDivElement>(null);
 
   // Scale and root note — determine which MIDI notes the grid rows represent
   const [scaleName, setScaleName] = useState<keyof typeof SCALES>("major");
@@ -282,7 +279,25 @@ export function PolySequencer({
   useEffect(() => {
     onStepRef.current = (time: number, step: number) => {
       const wrappedStep = step % numSteps;
-      setCurrentStep(wrappedStep);
+      // Imperatively update highlight + headers (no React re-render)
+      currentStepRef.current = wrappedStep;
+      if (highlightRef.current) {
+        highlightRef.current.style.display = "";
+        highlightRef.current.style.left = `${48 + wrappedStep * 32}px`;
+      }
+      if (headerRowRef.current) {
+        const children = headerRowRef.current.children;
+        for (let c = 1; c < children.length; c++) {
+          const el = children[c] as HTMLElement;
+          if (c - 1 === wrappedStep) {
+            el.classList.add("text-accent", "font-bold");
+            el.classList.remove("text-text-muted");
+          } else {
+            el.classList.remove("text-accent", "font-bold");
+            el.classList.add("text-text-muted");
+          }
+        }
+      }
 
       const data = stepsRef.current[wrappedStep];
       if (!data || data.notes.size === 0) return;
@@ -386,7 +401,15 @@ export function PolySequencer({
         schedulerRef.current = null;
         clearPendingTimeouts();
         flushSequencerNotes();
-        setCurrentStep(-1);
+        currentStepRef.current = -1;
+        if (highlightRef.current) highlightRef.current.style.display = "none";
+        if (headerRowRef.current) {
+          for (let c = 1; c < headerRowRef.current.children.length; c++) {
+            const el = headerRowRef.current.children[c] as HTMLElement;
+            el.classList.remove("text-accent", "font-bold");
+            el.classList.add("text-text-muted");
+          }
+        }
       };
     } else {
       if (schedulerRef.current) {
@@ -395,7 +418,17 @@ export function PolySequencer({
       }
       clearPendingTimeouts();
       flushSequencerNotes();
-      queueMicrotask(() => setCurrentStep(-1));
+      queueMicrotask(() => {
+        currentStepRef.current = -1;
+        if (highlightRef.current) highlightRef.current.style.display = "none";
+        if (headerRowRef.current) {
+          for (let c = 1; c < headerRowRef.current.children.length; c++) {
+            const el = headerRowRef.current.children[c] as HTMLElement;
+            el.classList.remove("text-accent", "font-bold");
+            el.classList.add("text-text-muted");
+          }
+        }
+      });
     }
     // NOTE: `bpm` is intentionally excluded — tempo changes are handled via
     // scheduler.setTempo() in a separate effect to avoid restarting playback.
@@ -517,6 +550,7 @@ export function PolySequencer({
         <div className="flex items-center gap-1">
           <span className="text-text-muted text-xs">Scale</span>
           <select
+            id={`${idBase}-scale`}
             value={scaleName as string}
             onChange={(e) =>
               setScaleName(e.target.value as keyof typeof SCALES)
@@ -532,6 +566,7 @@ export function PolySequencer({
             ))}
           </select>
           <select
+            id={`${idBase}-root-note`}
             value={rootNote}
             onChange={(e) => setRootNote(Number(e.target.value))}
             aria-label="Sequencer root note"
@@ -550,24 +585,19 @@ export function PolySequencer({
       {/* Step grid */}
       <div className="overflow-x-auto">
         <div className="relative inline-block min-w-full">
-          {/* Current-step overlay — only this re-renders on each scheduler tick */}
+          {/* Current-step overlay — driven imperatively, zero re-renders */}
           <StepHighlightOverlay
-            currentStep={currentStep}
-            numSteps={numSteps}
+            highlightRef={highlightRef}
             rowCount={rowNotes.length}
           />
 
-          {/* Column headers (step numbers) */}
-          <div className="flex">
+          {/* Column headers (step numbers) — highlight toggled imperatively */}
+          <div ref={headerRowRef} className="flex">
             <div className="w-12 shrink-0" /> {/* Row label spacer */}
             {Array.from({ length: numSteps }, (_, i) => (
               <div
                 key={i}
-                className={`flex h-5 w-8 shrink-0 items-center justify-center text-[9px] ${
-                  i === currentStep
-                    ? "text-accent font-bold"
-                    : "text-text-muted"
-                }`}
+                className="text-text-muted flex h-5 w-8 shrink-0 items-center justify-center text-[9px]"
               >
                 {i + 1}
               </div>

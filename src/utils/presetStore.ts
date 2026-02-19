@@ -41,12 +41,49 @@ export interface Preset {
     masterVolume: number;
 }
 
-/** Read all saved presets from localStorage. */
+/** Validate a single preset loaded from storage. Returns true if it
+ *  has the minimum required shape; filters out corrupt / stale entries. */
+function isValidPreset(p: unknown): p is Preset {
+    if (typeof p !== "object" || p === null) return false;
+    const o = p as Record<string, unknown>;
+
+    // Top-level required fields
+    if (typeof o.name !== "string" || !o.name) return false;
+    if (typeof o.createdAt !== "number") return false;
+    if (typeof o.masterVolume !== "number") return false;
+
+    // Synth param blocks must be objects
+    if (typeof o.fm !== "object" || o.fm === null) return false;
+    if (typeof o.sub !== "object" || o.sub === null) return false;
+    if (typeof o.gran !== "object" || o.gran === null) return false;
+
+    // Effects block
+    if (typeof o.effects !== "object" || o.effects === null) return false;
+    const eff = o.effects as Record<string, unknown>;
+    if (typeof eff.delayParams !== "object" || eff.delayParams === null) return false;
+    if (typeof eff.phaserParams !== "object" || eff.phaserParams === null) return false;
+    if (typeof eff.bitcrusherParams !== "object" || eff.bitcrusherParams === null) return false;
+    if (!Array.isArray(eff.rackSlots)) return false;
+    if (typeof eff.routingMode !== "string") return false;
+
+    // Channels block
+    if (typeof o.channels !== "object" || o.channels === null) return false;
+    const ch = o.channels as Record<string, unknown>;
+    if (ch.fmChannel !== null && typeof ch.fmChannel !== "number") return false;
+    if (ch.subChannel !== null && typeof ch.subChannel !== "number") return false;
+    if (ch.granChannel !== null && typeof ch.granChannel !== "number") return false;
+
+    return true;
+}
+
+/** Read all saved presets from localStorage. Invalid entries are silently filtered. */
 export function listPresets(): Preset[] {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return [];
-        return JSON.parse(raw) as Preset[];
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(isValidPreset);
     } catch {
         return [];
     }
