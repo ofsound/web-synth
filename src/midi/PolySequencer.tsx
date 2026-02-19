@@ -55,6 +55,8 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
   const stepsRef = useRef(steps);
   const swingRef = useRef(swing);
   const schedulerRef = useRef<Scheduler | null>(null);
+  const pendingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const activeSequencerNotesRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     stepsRef.current = steps;
@@ -67,6 +69,38 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
   useEffect(() => {
     if (schedulerRef.current) schedulerRef.current.setTempo(bpm);
   }, [bpm]);
+
+  const clearPendingTimeouts = useCallback(() => {
+    for (const id of pendingTimeoutsRef.current) {
+      clearTimeout(id);
+    }
+    pendingTimeoutsRef.current = [];
+  }, []);
+
+  const flushSequencerNotes = useCallback(() => {
+    for (const note of activeSequencerNotesRef.current) {
+      midiBus.emit({
+        type: "noteoff",
+        channel: 0,
+        note,
+        velocity: 0,
+      });
+    }
+    activeSequencerNotesRef.current.clear();
+  }, [midiBus]);
+
+  const scheduleEvent = useCallback((fn: () => void, delayMs: number) => {
+    const id = setTimeout(
+      () => {
+        fn();
+        pendingTimeoutsRef.current = pendingTimeoutsRef.current.filter(
+          (t) => t !== id,
+        );
+      },
+      Math.max(0, delayMs),
+    );
+    pendingTimeoutsRef.current.push(id);
+  }, []);
 
   /** Toggle a note in a step */
   const toggleNote = useCallback((stepIdx: number, note: number) => {
@@ -134,30 +168,36 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
       const stepDuration = 60 / (bpm * 4);
       const gateTime = stepDuration * data.gate;
 
-      for (const note of data.notes) {
-        // Schedule noteOn
-        midiBus.emit({
-          type: "noteon",
-          channel: 0,
-          note,
-          velocity: data.velocity,
-        });
+      // Align note timing to the scheduler's audio-time clock.
+      const now = ctx?.currentTime ?? 0;
+      const startDelaySec = Math.max(0, time + swingOffset - now);
+      const noteOnDelayMs = startDelaySec * 1000;
+      const noteOffDelayMs = (startDelaySec + gateTime) * 1000;
 
-        // Schedule noteOff after gate duration
-        setTimeout(
-          () => {
-            midiBus.emit({
-              type: "noteoff",
-              channel: 0,
-              note,
-              velocity: 0,
-            });
-          },
-          (gateTime + swingOffset) * 1000,
-        );
+      for (const note of data.notes) {
+        // Schedule noteOn and noteOff using scheduler-aligned delays.
+        scheduleEvent(() => {
+          midiBus.emit({
+            type: "noteon",
+            channel: 0,
+            note,
+            velocity: data.velocity,
+          });
+          activeSequencerNotesRef.current.add(note);
+        }, noteOnDelayMs);
+
+        scheduleEvent(() => {
+          midiBus.emit({
+            type: "noteoff",
+            channel: 0,
+            note,
+            velocity: 0,
+          });
+          activeSequencerNotesRef.current.delete(note);
+        }, noteOffDelayMs);
       }
     };
-  }, [numSteps, bpm, midiBus]);
+  }, [numSteps, bpm, midiBus, ctx, scheduleEvent]);
 
   // Start / Stop
   useEffect(() => {
@@ -175,6 +215,8 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
       return () => {
         scheduler.stop();
         schedulerRef.current = null;
+        clearPendingTimeouts();
+        flushSequencerNotes();
         setCurrentStep(-1);
       };
     } else {
@@ -182,10 +224,11 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         schedulerRef.current.stop();
         schedulerRef.current = null;
       }
-      setCurrentStep(-1);
+      clearPendingTimeouts();
+      flushSequencerNotes();
+      queueMicrotask(() => setCurrentStep(-1));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, playing]);
+  }, [ctx, playing, bpm, clearPendingTimeouts, flushSequencerNotes]);
 
   /** Clear all steps */
   const clearAll = useCallback(() => {
@@ -195,7 +238,7 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
   /** Randomise pattern */
   const randomize = useCallback(() => {
     setSteps((prev) =>
-      prev.map((step, i) => {
+      prev.map((_step, i) => {
         if (i >= numSteps) return createEmptyStep();
         const notes = new Set<number>();
         for (const n of rowNotes) {

@@ -8,7 +8,7 @@
  *       → masterGain (user-controllable volume)
  *         → analyserL / analyserR (for VU metering via ChannelSplitter)
  *         → limiter (DynamicsCompressorNode — safety)
- *           → ctx.destination
+ *           → output target (provider master bus or ctx.destination fallback)
  *
  * The synth outputs connect into synthMix externally.
  * The effects rack sits between effectsInput and effectsReturn.
@@ -31,13 +31,17 @@ export interface MasterOutputNodes {
     analyserR: AnalyserNode;
 }
 
-export function useMasterOutput(ctx: AudioContext | null) {
+export function useMasterOutput(
+    ctx: AudioContext | null,
+    outputTarget: AudioNode | null = null,
+) {
     const [nodes, setNodes] = useState<MasterOutputNodes | null>(null);
     const [masterVolume, setMasterVolume] = useState(0.8);
     const nodesRef = useRef<MasterOutputNodes | null>(null);
 
     useEffect(() => {
         if (!ctx) return;
+        const outputNode = outputTarget ?? ctx.destination;
 
         // Synth mix bus — all 3 synths connect here
         const synthMix = ctx.createGain();
@@ -83,9 +87,9 @@ export function useMasterOutput(ctx: AudioContext | null) {
         splitter.connect(analyserL, 0);
         splitter.connect(analyserR, 1);
 
-        // Wire: masterGain → limiter → destination
+        // Wire: masterGain → limiter → output target
         masterGain.connect(limiter);
-        limiter.connect(ctx.destination);
+        limiter.connect(outputNode);
 
         const n: MasterOutputNodes = {
             synthMix,
@@ -110,7 +114,7 @@ export function useMasterOutput(ctx: AudioContext | null) {
             limiter.disconnect();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ctx]);
+    }, [ctx, outputTarget]);
 
     // Update master gain when volume changes
     useEffect(() => {

@@ -23,7 +23,7 @@ export function Slider({
     <div
       className={`flex items-center gap-2 ${vertical ? "flex-col" : "flex-row"}`}
     >
-      <label className="text-text-muted min-w-[4rem] text-xs">{label}</label>
+      <label className="text-text-muted min-w-16 text-xs">{label}</label>
       <input
         type="range"
         min={min}
@@ -33,7 +33,7 @@ export function Slider({
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className={`accent-accent ${vertical ? "h-24 -rotate-90" : "w-full"}`}
       />
-      <span className="text-text min-w-[3.5rem] text-right text-xs tabular-nums">
+      <span className="text-text min-w-14 text-right text-xs tabular-nums">
         {typeof value === "number"
           ? value >= 1000
             ? `${(value / 1000).toFixed(1)}k`

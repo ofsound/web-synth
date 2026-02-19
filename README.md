@@ -1,73 +1,135 @@
-# React + TypeScript + Vite
+# Web Synth Workstation
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React + TypeScript + Vite web-audio workstation focused on real-time MIDI control, parallel synth engines, flexible effects routing, and a configurable MIDI-driven visualizer.
 
-Currently, two official plugins are available:
+## Current Product Scope
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 3 MIDI input sources merged into one shared MIDI bus
+  - Web MIDI hardware
+  - On-screen keyboard
+  - Polyphonic step sequencer
+- 3 synth engines in parallel
+  - FM (2-op)
+  - Subtractive
+  - Granular
+- Effects rack with flexible routing
+  - Delay / Echo
+  - Phaser
+  - Bitcrusher
+  - Serial or parallel mode, plus ordering controls
+- Master output chain
+  - Master gain
+  - Safety limiter
+  - Stereo VU meter
+- MIDI visualizer module
+  - Three.js + GSAP scenes
+  - MIDI-to-visual mapping controls
+  - Lazy-loaded for bundle splitting
 
-## React Compiler
+## Architecture (High-Level)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- App bootstrap: `src/main.tsx`
+  - `AudioContextProvider`
+  - `MidiBusProvider`
+  - `Workstation`
+- Main page shell: `src/Workstation.tsx`
+  - Left panel: MIDI, synths, effects, master
+  - Right panel: visualizer (lazy-loaded)
 
-## Expanding the ESLint configuration
+### Signal Flow
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+1. MIDI events are emitted into a shared event bus (`src/midi/MidiBus.ts`).
+2. Synth hooks subscribe to MIDI and generate audio in parallel.
+3. Synth outputs are summed into `master.synthMix`.
+4. Effects rack patches between `effectsSend` and `effectsReturn`.
+5. Master gain feeds:
+   - limiter → destination
+   - analyzers → stereo VU meter
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### MIDI Flow
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Sources (`WebMidiInput`, `KeyboardInput`, `PolySequencer`) emit normalized `MidiEvent` objects.
+- Consumers (synth hooks + visualizer state hook) subscribe to the same bus.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Key Directories
+
+- `src/midi` — MIDI bus + input adapters + sequencer
+- `src/synth` — synth engines + voice management + ADSR helpers
+- `src/effects` — effect hooks + rack router
+- `src/master` — master output graph
+- `src/visualizer` — MIDI state, mapper, scenes, host canvas
+- `src/components` — reusable UI controls and cards
+
+## Developer Setup
+
+### Prerequisites
+
+- Node.js 20+ recommended
+- npm
+- Modern browser with Web Audio API
+- Optional: Web MIDI-capable browser/device for hardware MIDI input
+
+### Install
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Run
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+### Build
+
+```bash
+npm run build
+```
+
+### Preview Production Build
+
+```bash
+npm run preview
+```
+
+### Lint
+
+```bash
+npm run lint
+```
+
+## Quality Gates
+
+Use this sequence before merge:
+
+```bash
+npm run lint
+npm run build
+```
+
+Expected: all pass cleanly.
+
+## Performance Notes
+
+- Visualizer is lazy-loaded from `Workstation`, reducing initial app chunk size.
+- A large visualizer chunk is expected; future optimization can split scenes into separate dynamic imports if needed.
+
+## MIDI + Audio Notes
+
+- Sequencer timing uses scheduler-aligned timing with explicit timeout cleanup and note flush on stop.
+- Web MIDI input adapter rebinds listeners on device topology changes and performs teardown on unmount.
+- Panic button (`All Notes Off`) is available in header.
+
+## Known Constraints
+
+- Web MIDI support depends on browser + permissions + connected devices.
+- Visualizer GPU cost depends on scene complexity and machine capability.
+- Chunk size warning from Vite is informational unless your deployment has strict budget limits.
+
+## Maintenance Guidelines
+
+- Keep audio graph changes localized in hooks under `src/synth`, `src/effects`, and `src/master`.
+- Preserve MIDI event normalization in `src/midi/MidiBus.ts`.
+- Prefer small, verifiable changes and always run quality gates after edits.
+- Avoid adding duplicate scene construction paths in visualizer lifecycle code.

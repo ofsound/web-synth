@@ -12,8 +12,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { EffectIO } from "./useDelay";
 
-function makeStaircaseCurve(bits: number, samples = 8192): Float32Array {
-    const curve = new Float32Array(samples);
+function makeStaircaseCurve(bits: number, samples = 8192): Float32Array<ArrayBuffer> {
+    const curve = new Float32Array(
+        new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT),
+    );
     const steps = Math.pow(2, bits);
     for (let i = 0; i < samples; i++) {
         const x = (2 * i) / (samples - 1) - 1;

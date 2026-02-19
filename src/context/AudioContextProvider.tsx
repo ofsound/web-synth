@@ -10,17 +10,12 @@ import { AudioCtxContext } from "./AudioContext";
 export function AudioContextProvider({ children }: { children: ReactNode }) {
   const ctxRef = useRef<AudioContext | null>(null);
   const [ctx, setCtx] = useState<AudioContext | null>(null);
-  const [masterGain, setMasterGain] = useState<GainNode | null>(null);
 
   const init = useCallback(() => {
     if (ctxRef.current) return;
     const ac = new AudioContext();
-    const master = ac.createGain();
-    master.gain.value = 0.8;
-    master.connect(ac.destination);
     ctxRef.current = ac;
     setCtx(ac);
-    setMasterGain(master);
   }, []);
 
   /* Initialise on first user gesture */
@@ -50,7 +45,6 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
       value={{
         ctx,
         resume,
-        masterGain,
       }}
     >
       {children}
