@@ -116,8 +116,9 @@ export class GeometricOrbits implements VisualizerScene {
       alpha: true,
       antialias: true,
     });
+    // width/height already include DPR scaling (set by VisualizerCanvas).
+    // Calling setPixelRatio on top would render at DPR² — remove it.
     this.renderer.setSize(width, height, false);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x0f0f0f, 1);
 
     this.camera.aspect = width / height;

@@ -3,13 +3,18 @@
  * Used by arpeggiator, step sequencer, and drum machine demos.
  */
 
+import {
+    SCHEDULER_LOOKAHEAD_MS,
+    SCHEDULE_AHEAD_SECONDS,
+} from "../constants";
+
 export type ScheduleCallback = (time: number, step: number) => void;
 
 export class Scheduler {
     private ctx: AudioContext;
     private tempo: number; /* BPM */
-    private lookAhead = 25; /* ms — how often scheduler runs */
-    private scheduleAhead = 0.1; /* seconds — how far ahead to schedule */
+    private lookAhead = SCHEDULER_LOOKAHEAD_MS;       /* ms — how often scheduler runs */
+    private scheduleAhead = SCHEDULE_AHEAD_SECONDS;   /* seconds — how far ahead to schedule */
     private timerId: ReturnType<typeof setTimeout> | null = null;
     private nextNoteTime = 0;
     private currentStep = 0;
@@ -23,6 +28,12 @@ export class Scheduler {
         callback: ScheduleCallback,
         options: {
             tempo?: number;
+            /**
+             * Hard cap on step counter before it wraps back to 0.
+             * Use Number.MAX_SAFE_INTEGER (default) to avoid musical skip
+             * artefacts — the sequencer should wrap via its own `step % numSteps`
+             * logic rather than the scheduler's totalSteps boundary.
+             */
             totalSteps?: number;
             subdivision?: number;
         } = {},
@@ -30,7 +41,7 @@ export class Scheduler {
         this.ctx = ctx;
         this.callback = callback;
         this.tempo = options.tempo ?? 120;
-        this.totalSteps = options.totalSteps ?? 16;
+        this.totalSteps = options.totalSteps ?? Number.MAX_SAFE_INTEGER;
         this.subdivision = options.subdivision ?? 1;
     }
 

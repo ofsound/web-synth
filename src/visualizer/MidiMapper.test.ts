@@ -138,7 +138,9 @@ describe("resolve", () => {
         note: 60,
         velocity: 100,
       },
+      // lastNoteOnId must equal lastEventId to signal "this frame is a noteOn"
       lastNoteOnId: 1,
+      lastEventId: 1,
     });
     const result = resolve(state, mappings);
     expect(result.x).toBe(1);

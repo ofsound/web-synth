@@ -178,3 +178,16 @@ export const MIDI_PLAYER_SCHEDULE_AHEAD_S = 0.15;
 
 /** Default velocity for MIDI file noteOn events (when file has 0) */
 export const MIDI_PLAYER_DEFAULT_VELOCITY = 100;
+
+/* ------------------------------------------------------------------ */
+/*  Visualizer Constants (runtime / behavioural)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Minimum visual hold time for a note-off event (ms).
+ *
+ * Notes shorter than this are held visually for this duration so that
+ * very short notes (drum hits, staccato) remain visible for at least
+ * one animation frame.
+ */
+export const VISUAL_NOTE_HOLD_MS = 34;

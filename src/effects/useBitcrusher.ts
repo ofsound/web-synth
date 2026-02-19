@@ -11,32 +11,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { EffectIO } from "../types/audio";
-
-/** Helper to smoothly ramp AudioParam to target value */
-function setParamSmoothly(
-  param: AudioParam | null,
-  value: number,
-  ctx: AudioContext,
-  rampTime = 0.02,
-) {
-  if (!param) return;
-  const now = ctx.currentTime;
-  param.cancelScheduledValues(now);
-  param.linearRampToValueAtTime(value, now + rampTime);
-}
+import { setParamSmoothly } from "../utils/audioUtils";
 
 // Cache for staircase curves by bit depth to avoid reallocation
-const CURVE_CACHE = new Map<number, Float32Array>();
+const CURVE_CACHE = new Map<number, Float32Array<ArrayBuffer>>();
 
-function makeStaircaseCurve(bits: number, samples = 8192): Float32Array {
+function makeStaircaseCurve(bits: number, samples = 8192): Float32Array<ArrayBuffer> {
   // Check cache first
   if (CURVE_CACHE.has(bits)) {
     return CURVE_CACHE.get(bits)!;
   }
 
-  const curve = new Float32Array(
-    new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT),
-  );
+  // Direct Float32Array allocation — no intermediate ArrayBuffer needed.
+  const curve = new Float32Array(new ArrayBuffer(samples * Float32Array.BYTES_PER_ELEMENT));
   const steps = Math.pow(2, bits);
   for (let i = 0; i < samples; i++) {
     const x = (2 * i) / (samples - 1) - 1;
@@ -72,9 +59,9 @@ export function useBitcrusher(ctx: AudioContext | null): {
   }, [params]);
 
   const [io, setIO] = useState<EffectIO | null>(null);
-  const shaperRef = useRef<WaveShaperNode>(null);
-  const dryRef = useRef<GainNode>(null);
-  const wetRef = useRef<GainNode>(null);
+  const shaperRef = useRef<WaveShaperNode | null>(null);
+  const dryRef = useRef<GainNode | null>(null);
+  const wetRef = useRef<GainNode | null>(null);
 
   useEffect(() => {
     if (!ctx) return;
@@ -84,9 +71,7 @@ export function useBitcrusher(ctx: AudioContext | null): {
     const output = ctx.createGain();
 
     const shaper = ctx.createWaveShaper();
-    shaper.curve = makeStaircaseCurve(
-      p.bits,
-    ) as unknown as Float32Array<ArrayBuffer>;
+    shaper.curve = makeStaircaseCurve(p.bits);
     shaper.oversample = "none";
 
     const dry = ctx.createGain();
@@ -121,9 +106,7 @@ export function useBitcrusher(ctx: AudioContext | null): {
 
   useEffect(() => {
     if (shaperRef.current) {
-      shaperRef.current.curve = makeStaircaseCurve(
-        params.bits,
-      ) as unknown as Float32Array<ArrayBuffer>;
+      shaperRef.current.curve = makeStaircaseCurve(params.bits);
     }
   }, [params.bits]);
 

@@ -12,19 +12,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { EffectIO } from "../types/audio";
-
-/** Helper to smoothly ramp AudioParam to target value */
-function setParamSmoothly(
-  param: AudioParam | null,
-  value: number,
-  ctx: AudioContext,
-  rampTime = 0.02,
-) {
-  if (!param) return;
-  const now = ctx.currentTime;
-  param.cancelScheduledValues(now);
-  param.linearRampToValueAtTime(value, now + rampTime);
-}
+import { setParamSmoothly } from "../utils/audioUtils";
 
 const NUM_STAGES = 4;
 const BASE_FREQ = 1000;
@@ -129,6 +117,10 @@ export function usePhaser(ctx: AudioContext | null): {
       fb.disconnect();
       lfo.disconnect();
       for (const g of lfoGains) g.disconnect();
+      // Clear stale refs so depth/rate effects don't schedule on dead nodes.
+      lfoGainsRef.current = [];
+      lfoRef.current = null;
+      fbRef.current = null;
     };
   }, [ctx]);
 

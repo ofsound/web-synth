@@ -1,16 +1,8 @@
-export type MidiChannelMode = "source" | "normalized";
-
-export interface ResolveMidiChannelOptions {
-    mode: MidiChannelMode;
-    sourceChannel: number;
-    normalizedChannel?: number;
-}
-
-export function resolveMidiChannel({
-    mode,
-    sourceChannel,
-    normalizedChannel = 0,
-}: ResolveMidiChannelOptions): number {
-    if (mode === "normalized") return normalizedChannel;
-    return sourceChannel;
-}
+/**
+ * Channel policy helpers.
+ *
+ * The canonical type definitions live in `../types/midi` — re-exported
+ * here for backward compatibility so all existing import paths still work.
+ */
+export type { MidiChannelMode, ResolveMidiChannelOptions } from "../types/midi";
+export { resolveMidiChannel } from "../types/midi";

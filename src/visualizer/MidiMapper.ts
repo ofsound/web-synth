@@ -102,9 +102,14 @@ function readSource(source: MidiSource, state: MidiState, ccNumber?: number): nu
             }
             return 0;
         case "noteOn":
-            // 1 for the single frame of a noteOn, 0 otherwise — acts as a trigger
+            // Returns 1 only when the most-recent event was a noteOn (velocity > 0).
+            // Comparing lastNoteOnId to lastEventId ensures this is a single-event
+            // trigger: once any subsequent event arrives, noteOn returns 0 again.
+            // Previously this returned 1 permanently after the first note, causing
+            // visual targets mapped to noteOn (e.g. intensity) to saturate forever.
             return state.lastNoteOnEvent?.type === "noteon" &&
-                state.lastNoteOnEvent.velocity > 0
+                state.lastNoteOnEvent.velocity > 0 &&
+                state.lastNoteOnId === state.lastEventId
                 ? 1
                 : 0;
         case "noteOff":

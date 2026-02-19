@@ -66,7 +66,16 @@ export function applyRelease(
 ) {
     const rel = Math.max(adsr.release, 0.01);
 
-    param.cancelScheduledValues(time);
-    param.setValueAtTime(param.value, time);
+    // cancelAndHoldAtTime freezes the scheduled value at `time`, correctly
+    // capturing a mid-automation value (e.g. mid-attack release).
+    // Falls back to cancelScheduledValues + setValueAtTime(current) on older
+    // browsers — which reads the wrong instant value if time > currentTime,
+    // but is still correct when called right at note-off.
+    if (typeof param.cancelAndHoldAtTime === "function") {
+        param.cancelAndHoldAtTime(time);
+    } else {
+        param.cancelScheduledValues(time);
+        param.setValueAtTime(param.value, time);
+    }
     param.setTargetAtTime(mode === "exponential" ? 0.001 : 0, time, rel / 4);
 }

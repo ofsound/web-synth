@@ -42,19 +42,23 @@ function formatTime(seconds: number): string {
 function PianoRollPreview({
   notes,
   selectedTracks,
-  progress,
+  progressRef,
   duration,
   onSeek,
 }: {
   notes: MidiFileNote[];
   selectedTracks: Set<number>;
-  progress: number;
+  /** Ref updated every RAF tick at 60fps — avoids 60fps React re-renders. */
+  progressRef: React.RefObject<number>;
   duration: number;
   onSeek: (fraction: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
+  // Canvas pixel dimensions tracked by ResizeObserver, not getBoundingClientRect.
+  const sizeRef = useRef({ w: 0, h: 0 });
+  const rafHandleRef = useRef(0);
 
   // Filtered notes for drawing
   const visibleNotes = useMemo(
@@ -75,58 +79,100 @@ function PianoRollPreview({
     return { minNote: Math.max(0, lo - 1), maxNote: Math.min(127, hi + 1) };
   }, [visibleNotes]);
 
-  // Draw
+  // Use ResizeObserver to track canvas size — avoids layout-reflow per frame.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
     const parent = containerRef.current;
     if (!parent) return;
-
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    const applySize = (w: number, h: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      sizeRef.current = { w, h };
+    };
+
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      applySize(width, height);
+    });
+
+    ro.observe(parent);
+    // Set initial size immediately
     const rect = parent.getBoundingClientRect();
-    const w = rect.width;
-    const h = rect.height;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${h}px`;
+    applySize(rect.width, rect.height);
 
-    const cx = canvas.getContext("2d")!;
-    cx.scale(dpr, dpr);
+    return () => ro.disconnect();
+  }, []);
 
-    // Background
-    cx.fillStyle = "#1a1a2e";
-    cx.fillRect(0, 0, w, h);
+  // Draw loop — runs its own RAF, reads progressRef directly (no React state).
+  useEffect(() => {
+    const draw = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        rafHandleRef.current = requestAnimationFrame(draw);
+        return;
+      }
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const { w, h } = sizeRef.current;
+      if (w === 0 || h === 0) {
+        rafHandleRef.current = requestAnimationFrame(draw);
+        return;
+      }
 
-    if (duration <= 0 || visibleNotes.length === 0) {
-      cx.fillStyle = "#8888aa";
-      cx.font = "11px sans-serif";
-      cx.textAlign = "center";
-      cx.fillText("No notes to display", w / 2, h / 2 + 4);
-      return;
-    }
+      const cx = canvas.getContext("2d");
+      if (!cx) {
+        rafHandleRef.current = requestAnimationFrame(draw);
+        return;
+      }
 
-    const pitchRange = maxNote - minNote + 1;
-    const noteH = Math.max(1, h / pitchRange);
+      cx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    // Draw notes
-    cx.fillStyle = "#6366f1";
-    for (const n of visibleNotes) {
-      const x = (n.time / duration) * w;
-      const nw = Math.max(1, (n.duration / duration) * w);
-      const y = h - ((n.note - minNote + 1) / pitchRange) * h;
-      cx.fillRect(x, y, nw, Math.max(1, noteH - 0.5));
-    }
+      // Background
+      cx.fillStyle = "#1a1a2e";
+      cx.fillRect(0, 0, w, h);
 
-    // Playhead
-    const px = progress * w;
-    cx.strokeStyle = "#f59e0b";
-    cx.lineWidth = 1.5;
-    cx.beginPath();
-    cx.moveTo(px, 0);
-    cx.lineTo(px, h);
-    cx.stroke();
-  }, [visibleNotes, progress, duration, minNote, maxNote]);
+      if (duration <= 0 || visibleNotes.length === 0) {
+        cx.fillStyle = "#8888aa";
+        cx.font = "11px sans-serif";
+        cx.textAlign = "center";
+        cx.fillText("No notes to display", w / 2, h / 2 + 4);
+        rafHandleRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
+      const pitchRange = maxNote - minNote + 1;
+      const noteH = Math.max(1, h / pitchRange);
+
+      // Draw notes
+      cx.fillStyle = "#6366f1";
+      for (const n of visibleNotes) {
+        const x = (n.time / duration) * w;
+        const nw = Math.max(1, (n.duration / duration) * w);
+        const y = h - ((n.note - minNote + 1) / pitchRange) * h;
+        cx.fillRect(x, y, nw, Math.max(1, noteH - 0.5));
+      }
+
+      // Playhead — reads live progressRef, no re-render needed
+      const px = progressRef.current * w;
+      cx.strokeStyle = "#f59e0b";
+      cx.lineWidth = 1.5;
+      cx.beginPath();
+      cx.moveTo(px, 0);
+      cx.lineTo(px, h);
+      cx.stroke();
+
+      rafHandleRef.current = requestAnimationFrame(draw);
+    };
+
+    rafHandleRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(rafHandleRef.current);
+  }, [visibleNotes, progressRef, duration, minNote, maxNote]);
 
   // Seek on click/drag
   const computeFraction = useCallback((clientX: number) => {
@@ -371,7 +417,7 @@ export function MidiFilePlayer({
         <PianoRollPreview
           notes={state.allNotes}
           selectedTracks={state.selectedTracks}
-          progress={state.progress}
+          progressRef={state.progressRef}
           duration={state.duration}
           onSeek={actions.seek}
         />

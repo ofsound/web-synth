@@ -10,19 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { EffectIO } from "../types/audio";
-
-/** Helper to smoothly ramp AudioParam to target value */
-function setParamSmoothly(
-  param: AudioParam | null,
-  value: number,
-  ctx: AudioContext,
-  rampTime = 0.02,
-) {
-  if (!param) return;
-  const now = ctx.currentTime;
-  param.cancelScheduledValues(now);
-  param.linearRampToValueAtTime(value, now + rampTime);
-}
+import { setParamSmoothly } from "../utils/audioUtils";
 
 export interface DelayParams {
   delayTime: number;

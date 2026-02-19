@@ -72,8 +72,9 @@ export class ParticleStorm implements VisualizerScene {
       alpha: true,
       antialias: false,
     });
+    // width/height already include DPR scaling (applied by VisualizerCanvas).
+    // Do NOT also call setPixelRatio — that would double-scale on Retina displays.
     this.renderer.setSize(width, height, false);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x0f0f0f, 1);
 
     this.camera.aspect = width / height;

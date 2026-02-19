@@ -38,12 +38,19 @@ export function ADSREnvelope({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Apply HiDPI / Retina scaling so the curve is sharp on high-density displays.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.scale(dpr, dpr);
+
     ctx.clearRect(0, 0, width, height);
 
     /* Fill area */
     ctx.beginPath();
-    ctx.moveTo(0, height);
-    ctx.lineTo(0, height); /* start at bottom-left */
+    ctx.moveTo(0, height); /* start at bottom-left */
     ctx.lineTo(points.attackEnd, 4); /* attack peak */
     ctx.lineTo(points.decayEnd, points.sustainLevel); /* decay to sustain */
     ctx.lineTo(points.sustainEnd, points.sustainLevel); /* sustain hold */
@@ -78,6 +85,7 @@ export function ADSREnvelope({
       ref={canvasRef}
       width={width}
       height={height}
+      style={{ width, height }}
       className="border-border bg-surface rounded border"
     />
   );

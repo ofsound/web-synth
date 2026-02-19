@@ -54,8 +54,13 @@ export interface MidiFilePlayerState {
     allNotes: MidiFileNote[];
     /** Whether playback is running */
     playing: boolean;
-    /** Current playback position 0–1 */
+    /** Current playback position 0–1 (React state, throttled to ~10fps) */
     progress: number;
+    /**
+     * Ref to the always-current progress value (updated every RAF call at 60fps).
+     * Use this for canvas / animation rendering to avoid 60fps React re-renders.
+     */
+    progressRef: React.RefObject<number>;
     /** Current elapsed time in seconds */
     elapsed: number;
     /** Playback loops when reaching end */
@@ -152,6 +157,16 @@ export function useMidiFilePlayer(
     const durationRef = useRef(0);
     /** RAF handle for progress updates */
     const rafRef = useRef(0);
+    /**
+     * Always-current progress value (fraction 0-1) — updated every RAF tick.
+     * Used by PianoRollPreview canvas which draws at its own RAF rate without
+     * triggering React re-renders.
+     */
+    const progressRef = useRef(0);
+    /** Timestamp of the last setProgress / setElapsed React state update */
+    const lastStateUpdateRef = useRef(0);
+    /** How often (ms) to propagate progress to React state (throttle re-renders) */
+    const PROGRESS_STATE_INTERVAL_MS = 100; // ~10fps for text/seek-bar display
     /** Loop flag ref for scheduler loop */
     const loopEnabledRef = useRef(loopEnabled);
     useEffect(() => {
@@ -211,8 +226,17 @@ export function useMidiFilePlayer(
             const t = getCurrentFileTime();
             const dur = durationRef.current;
             if (dur > 0) {
-                setProgress(Math.min(t / dur, 1));
-                setElapsed(Math.min(t, dur));
+                progressRef.current = Math.min(t / dur, 1);
+
+                // Throttle React state updates to ~10fps to avoid re-rendering
+                // the whole MidiFilePlayer tree at 60fps.  The canvas preview
+                // reads progressRef.current directly at its own RAF rate.
+                const now = performance.now();
+                if (now - lastStateUpdateRef.current >= PROGRESS_STATE_INTERVAL_MS) {
+                    lastStateUpdateRef.current = now;
+                    setProgress(progressRef.current);
+                    setElapsed(Math.min(t, dur));
+                }
             }
             rafRef.current = requestAnimationFrame(() => updateProgressRef.current());
         };
@@ -563,6 +587,7 @@ export function useMidiFilePlayer(
             allNotes,
             playing,
             progress,
+            progressRef,
             elapsed,
             loopEnabled,
             error,

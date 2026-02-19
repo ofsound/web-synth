@@ -6,6 +6,8 @@ interface KnobProps {
   max: number;
   value: number;
   onChange: (v: number) => void;
+  /** Default value to restore on double-click (DAW convention). */
+  defaultValue?: number;
   size?: number;
   unit?: string;
   /** Use logarithmic scaling — ideal for frequency-domain parameters. */
@@ -52,6 +54,7 @@ export function Knob({
   max,
   value,
   onChange,
+  defaultValue,
   size = 56,
   unit = "",
   scale = "linear",
@@ -99,6 +102,16 @@ export function Knob({
   const handlePointerUp = useCallback(() => {
     setDragging(false);
   }, []);
+
+  /**
+   * Double-click to reset to defaultValue (standard DAW convention).
+   * Only fires if defaultValue is provided.
+   */
+  const handleDoubleClick = useCallback(() => {
+    if (defaultValue !== undefined) {
+      onChange(clampValue(defaultValue));
+    }
+  }, [defaultValue, onChange, clampValue]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -171,9 +184,15 @@ export function Knob({
         aria-valuemax={max}
         aria-valuenow={value}
         aria-valuetext={`${displayVal}${unit}`}
+        title={
+          defaultValue !== undefined
+            ? `${label} (double-click to reset)`
+            : label
+        }
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         onBlur={handlePointerUp}
         className="border-border bg-surface-alt focus:ring-accent/60 relative cursor-grab rounded-full border focus:ring-2 focus:outline-none active:cursor-grabbing"

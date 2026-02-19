@@ -79,11 +79,10 @@ export function MappingModal({ scene, mappings, onChange, onClose }: Props) {
   }, [onClose]);
 
   return (
-    // Backdrop
+    // Backdrop — NOT aria-hidden: it is a clickable close target.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={onClose}
-      aria-hidden="true"
     >
       {/* Modal */}
       <div

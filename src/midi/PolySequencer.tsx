@@ -9,6 +9,7 @@
  */
 
 import {
+  memo,
   useCallback,
   useEffect,
   useId,
@@ -63,6 +64,73 @@ const ROOT_NAMES = [
   "A#",
   "B",
 ];
+
+/* ── Memoised sub-components — isolate per-tick re-renders ── */
+
+/**
+ * Translucent column overlay that moves to the active step each tick.
+ * Isolated so the note/velocity/gate/prob grid rows are NEVER re-rendered
+ * solely because the playback position advanced.
+ */
+const StepHighlightOverlay = memo(function StepHighlightOverlay({
+  currentStep,
+  numSteps,
+  rowCount,
+}: {
+  currentStep: number;
+  numSteps: number;
+  rowCount: number;
+}) {
+  if (currentStep < 0 || currentStep >= numSteps) return null;
+  // 48px label + 32px per step
+  const left = 48 + currentStep * 32;
+  // 24px header + rowCount * 24px note rows + 20px per sub-row (vel/gate/prob)
+  const height = 24 + rowCount * 24 + 3 * 20;
+  return (
+    <div
+      className="bg-accent/10 border-accent/30 pointer-events-none absolute top-0 w-8 border-x"
+      style={{ left, height }}
+      aria-hidden="true"
+    />
+  );
+});
+
+/** A single note-cell row — memoised, receives NO currentStep. */
+const NoteRow = memo(function NoteRow({
+  note,
+  numSteps,
+  stepNotes,
+  onToggle,
+}: {
+  note: number;
+  numSteps: number;
+  /** Per-step active set for this note */
+  stepNotes: boolean[];
+  onToggle: (stepIdx: number, note: number) => void;
+}) {
+  return (
+    <>
+      {Array.from({ length: numSteps }, (_, stepIdx) => {
+        const isActive = stepNotes[stepIdx];
+        return (
+          <button
+            type="button"
+            key={stepIdx}
+            onClick={() => onToggle(stepIdx, note)}
+            aria-label={`Toggle ${midiToNoteName(note)} on step ${stepIdx + 1}`}
+            className={`h-6 w-8 shrink-0 border transition-colors ${
+              isActive
+                ? "border-accent/60 bg-accent/40"
+                : stepIdx % 4 === 0
+                  ? "border-border bg-surface-alt"
+                  : "border-border/50 bg-surface"
+            }`}
+          />
+        );
+      })}
+    </>
+  );
+});
 
 /* ── Component ── */
 
@@ -305,7 +373,10 @@ export function PolySequencer({
       const scheduler = new Scheduler(
         ctx,
         (time, step) => onStepRef.current(time, step),
-        { tempo: bpm, totalSteps: 9999, subdivision: 0.25 },
+        // Use MAX_SAFE_INTEGER so the scheduler's internal step counter never
+        // wraps mid-pattern.  The sequencer handles its own step % numSteps
+        // wrapping via `wrappedStep` in the onStep callback.
+        { tempo: bpm, totalSteps: Number.MAX_SAFE_INTEGER, subdivision: 0.25 },
       );
       scheduler.start();
       schedulerRef.current = scheduler;
@@ -478,7 +549,14 @@ export function PolySequencer({
 
       {/* Step grid */}
       <div className="overflow-x-auto">
-        <div className="inline-block min-w-full">
+        <div className="relative inline-block min-w-full">
+          {/* Current-step overlay — only this re-renders on each scheduler tick */}
+          <StepHighlightOverlay
+            currentStep={currentStep}
+            numSteps={numSteps}
+            rowCount={rowNotes.length}
+          />
+
           {/* Column headers (step numbers) */}
           <div className="flex">
             <div className="w-12 shrink-0" /> {/* Row label spacer */}
@@ -496,37 +574,25 @@ export function PolySequencer({
             ))}
           </div>
 
-          {/* Note rows */}
-          {[...rowNotes].reverse().map((note) => (
-            <div key={note} className="flex">
-              <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
-                {midiToNoteName(note)}
+          {/* Note rows — memoised; do NOT depend on currentStep */}
+          {[...rowNotes].reverse().map((note) => {
+            const stepNotes = Array.from({ length: numSteps }, (_, idx) =>
+              steps[idx].notes.has(note),
+            );
+            return (
+              <div key={note} className="flex">
+                <div className="text-text-muted flex w-12 shrink-0 items-center text-[10px]">
+                  {midiToNoteName(note)}
+                </div>
+                <NoteRow
+                  note={note}
+                  numSteps={numSteps}
+                  stepNotes={stepNotes}
+                  onToggle={toggleNote}
+                />
               </div>
-              {Array.from({ length: numSteps }, (_, stepIdx) => {
-                const isActive = steps[stepIdx].notes.has(note);
-                const isCurrent = stepIdx === currentStep;
-                return (
-                  <button
-                    type="button"
-                    key={stepIdx}
-                    onClick={() => toggleNote(stepIdx, note)}
-                    aria-label={`Toggle ${midiToNoteName(note)} on step ${stepIdx + 1}`}
-                    className={`h-6 w-8 shrink-0 border transition-colors ${
-                      isActive
-                        ? isCurrent
-                          ? "border-accent bg-accent"
-                          : "border-accent/60 bg-accent/40"
-                        : isCurrent
-                          ? "border-accent/30 bg-surface-raised"
-                          : stepIdx % 4 === 0
-                            ? "border-border bg-surface-alt"
-                            : "border-border/50 bg-surface"
-                    }`}
-                  />
-                );
-              })}
-            </div>
-          ))}
+            );
+          })}
 
           {/* Per-step velocity row */}
           <div className="mt-1 flex">

@@ -4,21 +4,13 @@
  * All three input sources (Web MIDI hardware, on-screen keyboard, poly
  * sequencer) emit MidiEvent objects through a single bus.  Every synth
  * engine subscribes to the bus and reacts to noteOn / noteOff / cc.
+ *
+ * The canonical type definitions live in `../types/midi` — re-exported
+ * here for backward compatibility so all existing import paths still work.
  */
 
-export type MidiEvent =
-  | { type: "noteon"; channel: number; note: number; velocity: number }
-  | { type: "noteoff"; channel: number; note: number; velocity: number }
-  | {
-      type: "cc";
-      channel: number;
-      note: number;
-      velocity: number;
-      cc: number;
-      value: number;
-    };
-
-export type MidiSubscriber = (e: MidiEvent) => void;
+import type { MidiEvent, MidiSubscriber } from "../types/midi";
+export type { MidiEvent, MidiSubscriber } from "../types/midi";
 
 export class MidiBus {
   private listeners = new Set<MidiSubscriber>();

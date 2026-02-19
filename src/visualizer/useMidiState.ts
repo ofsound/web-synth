@@ -8,6 +8,7 @@
 
 import { useEffect, useRef } from "react";
 import type { MidiBus, MidiEvent } from "../midi/MidiBus";
+import { VISUAL_NOTE_HOLD_MS } from "../constants";
 
 /* ------------------------------------------------------------------ */
 /*  Ring buffer for note history                                      */
@@ -78,7 +79,6 @@ export interface MidiState {
 /* ------------------------------------------------------------------ */
 
 let globalEventId = 0;
-const VISUAL_NOTE_HOLD_MS = 34;
 
 function createInitialState(): MidiState {
   return {

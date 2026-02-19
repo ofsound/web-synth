@@ -93,14 +93,16 @@ export function useMasterOutput(
     // to avoid temporary double-bypass (+6dB) on mount.
     effectsReturn.connect(masterGain);
 
-    // Wire: masterGain → splitter → analysers
-    masterGain.connect(splitter);
-    splitter.connect(analyserL, 0);
-    splitter.connect(analyserR, 1);
-
     // Wire: masterGain → limiter → output target
     masterGain.connect(limiter);
     limiter.connect(outputNode);
+
+    // Wire: masterGain → splitter → analysers (post-limiter for accurate metering)
+    // Tap the signal AFTER the limiter so meters display true output levels,
+    // not pre-limit peaks that the user never actually hears.
+    limiter.connect(splitter);
+    splitter.connect(analyserL, 0);
+    splitter.connect(analyserR, 1);
 
     const n: MasterOutputNodes = {
       synthMix,

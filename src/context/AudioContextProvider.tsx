@@ -11,15 +11,22 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
   const ctxRef = useRef<AudioContext | null>(null);
   const initializedRef = useRef(false);
   const [ctx, setCtx] = useState<AudioContext | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   const init = useCallback(() => {
     if (initializedRef.current && ctxRef.current?.state !== "closed") return;
     initializedRef.current = true;
 
     const ac = new AudioContext();
-    // Eagerly resume — Safari and mobile Chrome may create in "suspended" state
+    // Eagerly resume — Safari and mobile Chrome may create in "suspended" state.
+    // Handle rejection so the error is surfaced rather than swallowed silently.
     if (ac.state === "suspended") {
-      ac.resume();
+      ac.resume().catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : "AudioContext resume failed";
+        console.warn("[AudioContextProvider] resume() rejected:", err);
+        setResumeError(message);
+      });
     }
     ctxRef.current = ac;
     setCtx(ac);
@@ -54,7 +61,15 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
   const resume = useCallback(async () => {
     init();
     if (ctxRef.current?.state === "suspended") {
-      await ctxRef.current.resume();
+      try {
+        await ctxRef.current.resume();
+        setResumeError(null);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "AudioContext resume failed";
+        console.warn("[AudioContextProvider] resume() rejected:", err);
+        setResumeError(message);
+      }
     }
   }, [init]);
 
@@ -63,6 +78,7 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
       value={{
         ctx,
         resume,
+        resumeError,
       }}
     >
       {children}

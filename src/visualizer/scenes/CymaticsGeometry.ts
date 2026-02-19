@@ -151,14 +151,17 @@ export class CymaticsGeometry implements VisualizerScene {
     const cy = this.h / 2;
     const ax = this.curve.amplitudeX * Math.min(this.w, this.h) * sizeScale;
     const ay = this.curve.amplitudeY * Math.min(this.w, this.h) * sizeScale;
-    const steps = 600 + Math.floor(intensity * 400);
+    // Cap subdivisions: 300 gives excellent visual quality at a fraction of the
+    // cost (previously 600-1000, causing ~60 k sin/cos ops/frame on high intensity).
+    const steps = Math.round(200 + intensity * 200);  // 200-400 range
 
     const l = 40 + brightness * 40;
     c.strokeStyle = `hsl(${this.curve.hue * 360}, 75%, ${l}%)`;
     c.lineWidth = this.curve.lineWidth;
     c.globalAlpha = 0.6 + brightness * 0.4;
-    c.beginPath();
 
+    // Use Path2D for faster replay on browsers that cache it.
+    const path = new Path2D();
     for (let i = 0; i <= steps; i++) {
       const t = (i / steps) * Math.PI * 2;
       const x =
@@ -170,17 +173,17 @@ export class CymaticsGeometry implements VisualizerScene {
         ay *
         Math.sin(this.curve.freqY * t + this.curve.phaseY + this.time * 0.3);
 
-      if (i === 0) c.moveTo(x, y);
-      else c.lineTo(x, y);
+      if (i === 0) path.moveTo(x, y);
+      else path.lineTo(x, y);
     }
-    c.stroke();
+    c.stroke(path);
 
     // Secondary layer — subtle inner pattern at higher density
     if (state.density > 4) {
       c.globalAlpha = Math.min((state.density - 4) / 10, 0.3);
       c.strokeStyle = `hsl(${(this.curve.hue * 360 + 180) % 360}, 60%, ${l * 0.6}%)`;
       c.lineWidth = 0.5;
-      c.beginPath();
+      const innerPath = new Path2D();
       for (let i = 0; i <= steps; i++) {
         const t = (i / steps) * Math.PI * 2;
         // Chladni-esque: product of two standing waves
@@ -196,10 +199,10 @@ export class CymaticsGeometry implements VisualizerScene {
           0.8 *
           Math.cos(this.curve.freqX * t) *
           Math.sin(this.curve.freqY * 2 * t + this.time * 0.4);
-        if (i === 0) c.moveTo(x, y);
-        else c.lineTo(x, y);
+        if (i === 0) innerPath.moveTo(x, y);
+        else innerPath.lineTo(x, y);
       }
-      c.stroke();
+      c.stroke(innerPath);
     }
 
     c.globalAlpha = 1;
