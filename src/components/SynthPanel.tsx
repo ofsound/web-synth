@@ -4,7 +4,7 @@
  * along with shared ADSR and gain controls.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Slider } from "./Slider";
 import { Knob } from "./Knob";
 import { ADSREnvelope } from "./ADSREnvelope";
@@ -21,6 +21,7 @@ interface FMPanelProps {
 
 export function FMSynthPanel({ params, setParams }: FMPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
 
   const update = <K extends keyof FMSynthParams>(
     key: K,
@@ -31,26 +32,35 @@ export function FMSynthPanel({ params, setParams }: FMPanelProps) {
 
   return (
     <div className="border-border rounded-lg border">
-      <div
-        className="flex cursor-pointer items-center justify-between px-3 py-2"
-        onClick={() => setCollapsed((c) => !c)}
-      >
+      <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               update("enabled", !params.enabled);
             }}
+            aria-label={`Toggle FM Synth ${params.enabled ? "off" : "on"}`}
+            aria-pressed={params.enabled}
             className={`h-2.5 w-2.5 rounded-full ${params.enabled ? "bg-success" : "bg-text-muted/30"}`}
             title={params.enabled ? "Enabled" : "Disabled"}
           />
           <h3 className="text-text text-sm font-semibold">FM Synth</h3>
         </div>
-        <span className="text-text-muted text-xs">{collapsed ? "▸" : "▾"}</span>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} FM Synth panel`}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          className="text-text-muted hover:text-text rounded px-1 text-xs"
+        >
+          {collapsed ? "▸" : "▾"}
+        </button>
       </div>
 
       {!collapsed && (
-        <div className="space-y-3 px-3 pb-3">
+        <div id={contentId} className="space-y-3 px-3 pb-3">
           {/* Gain */}
           <Slider
             label="Gain"
@@ -93,6 +103,7 @@ export function FMSynthPanel({ params, setParams }: FMPanelProps) {
               ["sine", "square", "sawtooth", "triangle"] as OscillatorType[]
             ).map((t) => (
               <button
+                type="button"
                 key={t}
                 onClick={() => update("carrierType", t)}
                 className={`rounded border px-2 py-0.5 text-[10px] capitalize ${
@@ -212,6 +223,7 @@ interface SubPanelProps {
 
 export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
 
   const update = <K extends keyof SubtractiveSynthParams>(
     key: K,
@@ -222,26 +234,35 @@ export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
 
   return (
     <div className="border-border rounded-lg border">
-      <div
-        className="flex cursor-pointer items-center justify-between px-3 py-2"
-        onClick={() => setCollapsed((c) => !c)}
-      >
+      <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               update("enabled", !params.enabled);
             }}
+            aria-label={`Toggle Subtractive Synth ${params.enabled ? "off" : "on"}`}
+            aria-pressed={params.enabled}
             className={`h-2.5 w-2.5 rounded-full ${params.enabled ? "bg-success" : "bg-text-muted/30"}`}
             title={params.enabled ? "Enabled" : "Disabled"}
           />
           <h3 className="text-text text-sm font-semibold">Subtractive</h3>
         </div>
-        <span className="text-text-muted text-xs">{collapsed ? "▸" : "▾"}</span>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} Subtractive panel`}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          className="text-text-muted hover:text-text rounded px-1 text-xs"
+        >
+          {collapsed ? "▸" : "▾"}
+        </button>
       </div>
 
       {!collapsed && (
-        <div className="space-y-3 px-3 pb-3">
+        <div id={contentId} className="space-y-3 px-3 pb-3">
           <Slider
             label="Gain"
             min={0}
@@ -258,6 +279,7 @@ export function SubtractiveSynthPanel({ params, setParams }: SubPanelProps) {
               ["sawtooth", "square", "triangle", "sine"] as OscillatorType[]
             ).map((t) => (
               <button
+                type="button"
                 key={t}
                 onClick={() => update("oscType", t)}
                 className={`rounded border px-2 py-0.5 text-[10px] capitalize ${
@@ -414,6 +436,7 @@ interface GranPanelProps {
 
 export function GranularSynthPanel({ params, setParams }: GranPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
 
   const update = <K extends keyof GranularSynthParams>(
     key: K,
@@ -424,26 +447,35 @@ export function GranularSynthPanel({ params, setParams }: GranPanelProps) {
 
   return (
     <div className="border-border rounded-lg border">
-      <div
-        className="flex cursor-pointer items-center justify-between px-3 py-2"
-        onClick={() => setCollapsed((c) => !c)}
-      >
+      <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               update("enabled", !params.enabled);
             }}
+            aria-label={`Toggle Granular Synth ${params.enabled ? "off" : "on"}`}
+            aria-pressed={params.enabled}
             className={`h-2.5 w-2.5 rounded-full ${params.enabled ? "bg-success" : "bg-text-muted/30"}`}
             title={params.enabled ? "Enabled" : "Disabled"}
           />
           <h3 className="text-text text-sm font-semibold">Granular</h3>
         </div>
-        <span className="text-text-muted text-xs">{collapsed ? "▸" : "▾"}</span>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} Granular panel`}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          className="text-text-muted hover:text-text rounded px-1 text-xs"
+        >
+          {collapsed ? "▸" : "▾"}
+        </button>
       </div>
 
       {!collapsed && (
-        <div className="space-y-3 px-3 pb-3">
+        <div id={contentId} className="space-y-3 px-3 pb-3">
           <Slider
             label="Gain"
             min={0}

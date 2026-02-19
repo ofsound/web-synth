@@ -76,9 +76,10 @@ export class GridPulseMatrix implements VisualizerScene {
   private lastNotes = new Set<number>();
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
-    this.ctx2d = canvas.getContext("2d")!;
+    this.ctx2d = canvas.getContext("2d");
     this.w = width;
     this.h = height;
+    if (!this.ctx2d) return;
 
     // Initialise cell state
     this.cells = [];

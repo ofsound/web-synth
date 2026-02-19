@@ -11,6 +11,19 @@
 import { useEffect, useRef, useState } from "react";
 import type { EffectIO } from "../types/audio";
 
+/** Helper to smoothly ramp AudioParam to target value */
+function setParamSmoothly(
+  param: AudioParam | null,
+  value: number,
+  ctx: AudioContext,
+  rampTime = 0.02,
+) {
+  if (!param) return;
+  const now = ctx.currentTime;
+  param.cancelScheduledValues(now);
+  param.linearRampToValueAtTime(value, now + rampTime);
+}
+
 export interface DelayParams {
   delayTime: number;
   feedback: number;
@@ -89,19 +102,25 @@ export function useDelay(ctx: AudioContext | null): {
     };
   }, [ctx]);
 
-  // Live-update params
+  // Live-update params with smoothing to prevent zipper noise
   useEffect(() => {
-    if (delayRef.current) delayRef.current.delayTime.value = params.delayTime;
-  }, [params.delayTime]);
+    if (delayRef.current && ctx) {
+      setParamSmoothly(delayRef.current.delayTime, params.delayTime, ctx);
+    }
+  }, [params.delayTime, ctx]);
 
   useEffect(() => {
-    if (fbRef.current) fbRef.current.gain.value = params.feedback;
-  }, [params.feedback]);
+    if (fbRef.current && ctx) {
+      setParamSmoothly(fbRef.current.gain, params.feedback, ctx);
+    }
+  }, [params.feedback, ctx]);
 
   useEffect(() => {
-    if (dryRef.current) dryRef.current.gain.value = 1 - params.mix;
-    if (wetRef.current) wetRef.current.gain.value = params.mix;
-  }, [params.mix]);
+    if (dryRef.current && wetRef.current && ctx) {
+      setParamSmoothly(dryRef.current.gain, 1 - params.mix, ctx);
+      setParamSmoothly(wetRef.current.gain, params.mix, ctx);
+    }
+  }, [params.mix, ctx]);
 
   return { io, params, setParams };
 }

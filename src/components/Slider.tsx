@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 interface SliderProps {
   label: string;
   min: number;
@@ -19,12 +21,19 @@ export function Slider({
   unit = "",
   vertical = false,
 }: SliderProps) {
+  const inputId = useId();
+
   return (
     <div
       className={`flex items-center gap-2 ${vertical ? "flex-col" : "flex-row"}`}
     >
-      <label className="text-text-muted min-w-16 text-xs">{label}</label>
+      <label htmlFor={inputId} className="text-text-muted min-w-16 text-xs">
+        {label}
+      </label>
       <input
+        id={inputId}
+        name={label.toLowerCase().replace(/\s+/g, "-")}
+        aria-label={label}
         type="range"
         min={min}
         max={max}

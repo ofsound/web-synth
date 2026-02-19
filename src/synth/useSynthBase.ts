@@ -32,7 +32,13 @@
  * ```
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { VoiceManager } from "./VoiceManager";
 import type { MidiBus } from "../midi/MidiBus";
 
@@ -85,7 +91,9 @@ export function useSynthBase<P extends BaseSynthParams, V>(
   const callbacksRef = useRef(callbacks);
   const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set());
 
-  callbacksRef.current = callbacks;
+  useLayoutEffect(() => {
+    callbacksRef.current = callbacks;
+  }, [callbacks]);
 
   useEffect(() => {
     if (!ctx) return;

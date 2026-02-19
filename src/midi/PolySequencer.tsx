@@ -8,7 +8,7 @@
  * Uses the Scheduler class (Chris Wilson look-ahead) for timing accuracy.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Scheduler } from "../utils/scheduler";
 import { midiToNoteName } from "../utils/midiUtils";
 import type { MidiBus } from "./MidiBus";
@@ -37,6 +37,11 @@ interface PolySequencerProps {
 }
 
 export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
+  const idBase = useId();
+  const bpmInputId = `${idBase}-bpm`;
+  const stepsSelectId = `${idBase}-steps`;
+  const swingInputId = `${idBase}-swing`;
+
   const [numSteps, setNumSteps] = useState(16);
   const [bpm, setBpm] = useState(120);
   const [swing, setSwing] = useState(0); // 0–0.5
@@ -262,6 +267,7 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
       {/* Transport controls */}
       <div className="flex flex-wrap items-center gap-3">
         <button
+          type="button"
           onClick={() => setPlaying((p) => !p)}
           className={`rounded border px-3 py-1.5 text-xs font-medium ${
             playing
@@ -273,8 +279,13 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         </button>
 
         <div className="flex items-center gap-1">
-          <label className="text-text-muted text-xs">BPM</label>
+          <label htmlFor={bpmInputId} className="text-text-muted text-xs">
+            BPM
+          </label>
           <input
+            id={bpmInputId}
+            name="bpm"
+            aria-label="Sequencer BPM"
             type="number"
             min={40}
             max={300}
@@ -285,8 +296,13 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          <label className="text-text-muted text-xs">Steps</label>
+          <label htmlFor={stepsSelectId} className="text-text-muted text-xs">
+            Steps
+          </label>
           <select
+            id={stepsSelectId}
+            name="steps"
+            aria-label="Sequencer steps"
             value={numSteps}
             onChange={(e) => setNumSteps(Number(e.target.value))}
             className="border-border bg-surface-alt text-text rounded border px-2 py-1 text-xs"
@@ -298,8 +314,13 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         </div>
 
         <div className="flex items-center gap-1">
-          <label className="text-text-muted text-xs">Swing</label>
+          <label htmlFor={swingInputId} className="text-text-muted text-xs">
+            Swing
+          </label>
           <input
+            id={swingInputId}
+            name="swing"
+            aria-label="Sequencer swing amount"
             type="range"
             min={0}
             max={0.5}
@@ -314,12 +335,14 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
         </div>
 
         <button
+          type="button"
           onClick={randomize}
           className="border-border text-text-muted hover:text-text rounded border px-2 py-1 text-xs"
         >
           Randomize
         </button>
         <button
+          type="button"
           onClick={clearAll}
           className="border-border text-text-muted hover:text-text rounded border px-2 py-1 text-xs"
         >
@@ -358,8 +381,10 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
                 const isCurrent = stepIdx === currentStep;
                 return (
                   <button
+                    type="button"
                     key={stepIdx}
                     onClick={() => toggleNote(stepIdx, note)}
+                    aria-label={`Toggle ${midiToNoteName(note)} on step ${stepIdx + 1}`}
                     className={`h-6 w-8 shrink-0 border transition-colors ${
                       isActive
                         ? isCurrent
@@ -385,6 +410,9 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
             {Array.from({ length: numSteps }, (_, i) => (
               <div key={i} className="flex w-8 shrink-0 justify-center">
                 <input
+                  id={`${idBase}-vel-${i}`}
+                  name={`step-${i + 1}-velocity`}
+                  aria-label={`Step ${i + 1} velocity`}
                   type="range"
                   min={0}
                   max={127}
@@ -405,10 +433,12 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
             </div>
             {Array.from({ length: numSteps }, (_, i) => (
               <div key={i} className="flex w-8 shrink-0 justify-center">
-                <div
+                <button
+                  type="button"
                   className="bg-accent/30 mt-0.5 h-3 rounded-sm"
                   style={{ width: `${steps[i].gate * 28}px` }}
                   title={`Gate: ${Math.round(steps[i].gate * 100)}%`}
+                  aria-label={`Step ${i + 1} gate ${Math.round(steps[i].gate * 100)} percent`}
                   onClick={() => {
                     const next =
                       steps[i].gate >= 0.9 ? 0.1 : steps[i].gate + 0.2;
@@ -426,7 +456,8 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
             </div>
             {Array.from({ length: numSteps }, (_, i) => (
               <div key={i} className="flex w-8 shrink-0 justify-center">
-                <div
+                <button
+                  type="button"
                   className={`mt-0.5 h-3 rounded-sm ${
                     steps[i].probability >= 100
                       ? "bg-success/40"
@@ -434,6 +465,7 @@ export function PolySequencer({ midiBus, ctx }: PolySequencerProps) {
                   }`}
                   style={{ width: `${(steps[i].probability / 100) * 28}px` }}
                   title={`Prob: ${steps[i].probability}%`}
+                  aria-label={`Step ${i + 1} probability ${steps[i].probability} percent`}
                   onClick={() => {
                     const next =
                       steps[i].probability >= 100

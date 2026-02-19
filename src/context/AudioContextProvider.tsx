@@ -37,6 +37,15 @@ export function AudioContextProvider({ children }: { children: ReactNode }) {
     };
   }, [init]);
 
+  // Cleanup AudioContext on unmount
+  useEffect(() => {
+    return () => {
+      if (ctxRef.current && ctxRef.current.state !== "closed") {
+        ctxRef.current.close();
+      }
+    };
+  }, []);
+
   const resume = useCallback(async () => {
     init();
     if (ctxRef.current?.state === "suspended") {

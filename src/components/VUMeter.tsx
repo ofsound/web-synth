@@ -42,6 +42,15 @@ export function VUMeter({
   useEffect(() => {
     if (!analyserL || !analyserR) return;
 
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+    }
+
     const bufL = new Float32Array(analyserL.fftSize);
     const bufR = new Float32Array(analyserR.fftSize);
 
@@ -53,7 +62,11 @@ export function VUMeter({
       const c = canvas.getContext("2d");
       if (!c) return;
 
-      // Frame-rate independent delta time
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const w = width;
+      const h = height;
       const dt = Math.min((timestamp - lastTimeRef.current) / 1000, 0.1);
       lastTimeRef.current = timestamp;
 
@@ -63,12 +76,8 @@ export function VUMeter({
       const dbL = rmsToDb(rmsLevel(bufL));
       const dbR = rmsToDb(rmsLevel(bufR));
 
-      // Peak hold with frame-rate-independent decay
       peakLRef.current = Math.max(dbL, peakLRef.current - PEAK_DECAY_RATE * dt);
       peakRRef.current = Math.max(dbR, peakRRef.current - PEAK_DECAY_RATE * dt);
-
-      const w = canvas.width;
-      const h = canvas.height;
       c.clearRect(0, 0, w, h);
 
       const barW = (w - 24) / 2; // 2 bars with spacing
@@ -140,7 +149,7 @@ export function VUMeter({
 
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [analyserL, analyserR]);
+  }, [analyserL, analyserR, width, height]);
 
   return (
     <canvas

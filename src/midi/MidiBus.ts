@@ -7,37 +7,50 @@
  */
 
 export type MidiEvent =
-    | { type: "noteon"; channel: number; note: number; velocity: number }
-    | { type: "noteoff"; channel: number; note: number; velocity: number }
-    | { type: "cc"; channel: number; note: number; velocity: number; cc: number; value: number };
+  | { type: "noteon"; channel: number; note: number; velocity: number }
+  | { type: "noteoff"; channel: number; note: number; velocity: number }
+  | {
+      type: "cc";
+      channel: number;
+      note: number;
+      velocity: number;
+      cc: number;
+      value: number;
+    };
 
 export type MidiSubscriber = (e: MidiEvent) => void;
 
 export class MidiBus {
-    private listeners = new Set<MidiSubscriber>();
+  private listeners = new Set<MidiSubscriber>();
 
-    /** Emit an event to all subscribers. */
-    emit(event: MidiEvent) {
-        this.listeners.forEach((fn) => fn(event));
-    }
+  /** Emit an event to all subscribers. */
+  emit(event: MidiEvent) {
+    this.listeners.forEach((fn) => {
+      try {
+        fn(event);
+      } catch (err) {
+        console.error("MidiBus subscriber error:", err);
+      }
+    });
+  }
 
-    /** Subscribe to all events. Returns an unsubscribe function. */
-    subscribe(fn: MidiSubscriber): () => void {
-        this.listeners.add(fn);
-        return () => {
-            this.listeners.delete(fn);
-        };
-    }
+  /** Subscribe to all events. Returns an unsubscribe function. */
+  subscribe(fn: MidiSubscriber): () => void {
+    this.listeners.add(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
 
-    /** Send noteOff for all 128 notes — "panic" button. */
-    allNotesOff() {
-        for (let note = 0; note < 128; note++) {
-            this.emit({ type: "noteoff", channel: 0, note, velocity: 0 });
-        }
+  /** Send noteOff for all 128 notes — "panic" button. */
+  allNotesOff() {
+    for (let note = 0; note < 128; note++) {
+      this.emit({ type: "noteoff", channel: 0, note, velocity: 0 });
     }
+  }
 
-    /** Current subscriber count (useful for debugging). */
-    get size() {
-        return this.listeners.size;
-    }
+  /** Current subscriber count (useful for debugging). */
+  get size() {
+    return this.listeners.size;
+  }
 }

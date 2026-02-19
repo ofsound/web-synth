@@ -61,6 +61,7 @@ export class ParticleStorm implements VisualizerScene {
   private ages = new Float32Array(MAX_PARTICLES);
   private sizes = new Float32Array(MAX_PARTICLES);
   private nextIdx = 0;
+  private activeIndices = new Set<number>();
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
     this.renderer = new THREE.WebGLRenderer({
@@ -79,6 +80,7 @@ export class ParticleStorm implements VisualizerScene {
     this.lifetimes.fill(0);
     this.ages.fill(999);
     this.sizes.fill(0);
+    this.activeIndices.clear();
 
     this.geometry.setAttribute(
       "position",
@@ -133,13 +135,14 @@ export class ParticleStorm implements VisualizerScene {
     }
 
     const gravity = -2 * intensity;
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      if (this.ages[i] >= this.lifetimes[i]) continue;
 
+    const toRemove: number[] = [];
+    for (const i of this.activeIndices) {
       this.ages[i] += dt;
       const t = this.ages[i] / this.lifetimes[i];
       if (t >= 1) {
         this.sizes[i] = 0;
+        toRemove.push(i);
         continue;
       }
 
@@ -153,6 +156,9 @@ export class ParticleStorm implements VisualizerScene {
       this.colors[i3] *= 0.99;
       this.colors[i3 + 1] *= 0.99;
       this.colors[i3 + 2] = this.colors[i3 + 2] * 0.99 + fade * 0.002;
+    }
+    for (const i of toRemove) {
+      this.activeIndices.delete(i);
     }
 
     const posAttr = this.geometry.getAttribute("position");
@@ -180,6 +186,7 @@ export class ParticleStorm implements VisualizerScene {
   }
 
   dispose() {
+    this.activeIndices.clear();
     this.geometry.dispose();
     this.material?.dispose();
     this.renderer?.dispose();
@@ -220,6 +227,7 @@ export class ParticleStorm implements VisualizerScene {
       this.lifetimes[i] = PARTICLE_LIFETIME * (0.5 + Math.random() * 0.5);
       this.ages[i] = 0;
       this.sizes[i] = sizeScale;
+      this.activeIndices.add(i);
     }
   }
 }

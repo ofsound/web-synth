@@ -77,10 +77,12 @@ export class CymaticsGeometry implements VisualizerScene {
   };
 
   init(canvas: HTMLCanvasElement, width: number, height: number) {
-    this.ctx2d = canvas.getContext("2d")!;
+    this.ctx2d = canvas.getContext("2d");
     this.w = width;
     this.h = height;
     this.time = 0;
+
+    if (!this.ctx2d) return;
 
     // Fill initial background
     const c = this.ctx2d;

@@ -3,7 +3,7 @@
  * scene and drives the animation loop.
  *
  * Manages:
- * - Single <canvas> element shared across all scenes
+ * - Dedicated <canvas> elements for WebGL and Canvas2D scenes
  * - Scene lifecycle (init → animate → dispose)
  * - MIDI state + mapper integration per frame
  * - Resize observer for responsive sizing
@@ -97,7 +97,8 @@ function useVisualizerLoop(
 }
 
 export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const webglCanvasRef = useRef<HTMLCanvasElement>(null);
+  const canvas2dRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const midiStateRef = useMidiState(midiBus);
 
@@ -113,6 +114,8 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
 
   const [activeIdx, setActiveIdx] = useState(0);
   const activeScene = scenes[activeIdx] ?? null;
+  const activeCanvasRef =
+    activeScene?.type === "canvas2d" ? canvas2dRef : webglCanvasRef;
 
   const [mappingsMap, setMappingsMap] =
     useState<Record<string, MidiMapping[]>>(defaultMappings);
@@ -129,7 +132,13 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
 
   const [showModal, setShowModal] = useState(false);
 
-  useVisualizerLoop(containerRef, canvasRef, activeScene, midiStateRef, activeMappings);
+  useVisualizerLoop(
+    containerRef,
+    activeCanvasRef,
+    activeScene,
+    midiStateRef,
+    activeMappings,
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -154,8 +163,21 @@ export function VisualizerCanvas({ midiBus }: { midiBus: MidiBus }) {
 
       <div ref={containerRef} className="relative min-h-0 flex-1">
         <canvas
-          ref={canvasRef}
-          className="absolute inset-0 h-full w-full"
+          ref={webglCanvasRef}
+          className={`absolute inset-0 h-full w-full ${
+            activeScene?.type === "three"
+              ? "opacity-100"
+              : "pointer-events-none opacity-0"
+          }`}
+          style={{ imageRendering: "auto" }}
+        />
+        <canvas
+          ref={canvas2dRef}
+          className={`absolute inset-0 h-full w-full ${
+            activeScene?.type === "canvas2d"
+              ? "opacity-100"
+              : "pointer-events-none opacity-0"
+          }`}
           style={{ imageRendering: "auto" }}
         />
       </div>

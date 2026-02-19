@@ -5,6 +5,7 @@ type TestVoice = { id: number };
 
 function setup(maxVoices = 4) {
   const createVoice = vi.fn(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (note: number, _velocity: number, _time: number): TestVoice => ({
       id: note,
     }),

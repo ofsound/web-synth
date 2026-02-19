@@ -24,6 +24,11 @@ export function Knob({
   const startYRef = useRef(0);
   const startValRef = useRef(0);
 
+  const clampValue = useCallback(
+    (next: number) => Math.min(max, Math.max(min, next)),
+    [min, max],
+  );
+
   const pct = (value - min) / (max - min);
   const angle = -135 + pct * 270; /* -135° to +135° */
 
@@ -33,7 +38,7 @@ export function Knob({
       setDragging(true);
       startYRef.current = e.clientY;
       startValRef.current = value;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
     [value],
   );
@@ -44,18 +49,43 @@ export function Knob({
       const dy = startYRef.current - e.clientY;
       const range = max - min;
       const sensitivity = range / 150;
-      const newVal = Math.min(
-        max,
-        Math.max(min, startValRef.current + dy * sensitivity),
-      );
+      const newVal = clampValue(startValRef.current + dy * sensitivity);
       onChange(newVal);
     },
-    [dragging, min, max, onChange],
+    [dragging, clampValue, max, min, onChange],
   );
 
   const handlePointerUp = useCallback(() => {
     setDragging(false);
   }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const fineStep = (max - min) / 100;
+      const coarseStep = (max - min) / 20;
+
+      if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+        e.preventDefault();
+        onChange(clampValue(value + fineStep));
+      } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        onChange(clampValue(value - fineStep));
+      } else if (e.key === "PageUp") {
+        e.preventDefault();
+        onChange(clampValue(value + coarseStep));
+      } else if (e.key === "PageDown") {
+        e.preventDefault();
+        onChange(clampValue(value - coarseStep));
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        onChange(min);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        onChange(max);
+      }
+    },
+    [clampValue, max, min, onChange, value],
+  );
 
   useEffect(() => {
     if (dragging) {
@@ -76,10 +106,19 @@ export function Knob({
     <div className="flex flex-col items-center gap-1">
       <div
         ref={knobRef}
+        role="slider"
+        tabIndex={0}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={`${displayVal}${unit}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        className="border-border bg-surface-alt relative cursor-grab rounded-full border active:cursor-grabbing"
+        onKeyDown={handleKeyDown}
+        onBlur={handlePointerUp}
+        className="border-border bg-surface-alt relative cursor-grab rounded-full border active:cursor-grabbing focus:ring-accent/60 focus:ring-2 focus:outline-none"
         style={{ width: size, height: size }}
       >
         {/* Track arc */}

@@ -74,7 +74,7 @@ export function useWebMidiInput(midiBus: MidiBus) {
         };
 
         navigator
-            .requestMIDIAccess()
+            .requestMIDIAccess({ sysex: false })
             .then((access) => {
                 if (cancelled) return;
                 accessRef = access;
